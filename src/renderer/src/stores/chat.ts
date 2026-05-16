@@ -1,0 +1,335 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+export interface Message {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: number
+  toolCalls?: ToolCall[]
+}
+
+export interface ToolCall {
+  name: string
+  args: string
+  result?: string
+  status: 'running' | 'done' | 'error'
+}
+
+export interface Session {
+  id: string
+  title: string
+  messages: Message[]
+  createdAt: number
+  lastAiMessage?: string
+}
+
+export const useChatStore = defineStore('chat', () => {
+  const sessions = ref<Session[]>([])
+  const currentSessionId = ref<string | null>(null)
+  const isConnected = ref(false)
+  const isLoading = ref(false)
+  const ws = ref<WebSocket | null>(null)
+
+  // Reconnection state
+  let backendUrl = ''
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let reconnectAttempts = 0
+  const MAX_RECONNECT_DELAY = 30000
+  const HEARTBEAT_INTERVAL = 15000
+
+  // ── Helper: send JSON via WebSocket ──────────────────────
+  function wsSend(data: Record<string, unknown>) {
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.send(JSON.stringify(data))
+    }
+  }
+
+  // ── Session CRUD (all go through backend) ────────────────
+  function createSession() {
+    const id = crypto.randomUUID()
+    const session: Session = {
+      id,
+      title: '新对话',
+      messages: [],
+      createdAt: Date.now()
+    }
+    sessions.value.unshift(session)
+    currentSessionId.value = id
+    wsSend({ type: 'create_session', session_id: id, title: '新对话' })
+    return session
+  }
+
+  function deleteSession(id: string) {
+    const idx = sessions.value.findIndex((s) => s.id === id)
+    if (idx === -1) return
+    sessions.value.splice(idx, 1)
+    if (currentSessionId.value === id) {
+      currentSessionId.value = sessions.value.length > 0 ? sessions.value[0].id : null
+    }
+    wsSend({ type: 'delete_session', session_id: id })
+  }
+
+  function switchSession(id: string) {
+    currentSessionId.value = id
+    const session = sessions.value.find((s) => s.id === id)
+    // Load messages if session has none yet (lazy load from DB)
+    if (session && session.messages.length === 0) {
+      wsSend({ type: 'load_messages', session_id: id })
+    }
+  }
+
+  function getCurrentSession(): Session | undefined {
+    return sessions.value.find((s) => s.id === currentSessionId.value)
+  }
+
+  function addMessage(message: Message) {
+    const session = getCurrentSession()
+    if (session) {
+      session.messages.push(message)
+    }
+  }
+
+  function renameSession(id: string, title: string) {
+    const session = sessions.value.find((s) => s.id === id)
+    if (session) {
+      session.title = title
+    }
+    wsSend({ type: 'rename_session', session_id: id, title })
+  }
+
+  // ── Heartbeat ────────────────────────────────────────────
+  function startHeartbeat() {
+    stopHeartbeat()
+    heartbeatTimer = setInterval(() => {
+      wsSend({ type: 'ping' })
+    }, HEARTBEAT_INTERVAL)
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+  }
+
+  // ── Reconnect ────────────────────────────────────────────
+  function scheduleReconnect() {
+    if (reconnectTimer) return
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
+    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1})...`)
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      reconnectAttempts++
+      connectWebSocket(backendUrl)
+    }, delay)
+  }
+
+  // ── WebSocket connection ─────────────────────────────────
+  function connectWebSocket(url: string) {
+    backendUrl = url
+
+    if (ws.value) {
+      ws.value.onclose = null
+      ws.value.close()
+    }
+
+    const socket = new WebSocket(url)
+
+    socket.onopen = () => {
+      isConnected.value = true
+      reconnectAttempts = 0
+      console.log('[WS] Connected')
+      startHeartbeat()
+      // Load persisted sessions from backend
+      socket.send(JSON.stringify({ type: 'load_sessions' }))
+    }
+
+    socket.onclose = () => {
+      isConnected.value = false
+      stopHeartbeat()
+      console.log('[WS] Disconnected')
+      scheduleReconnect()
+    }
+
+    socket.onerror = (err) => {
+      console.error('[WS] Error:', err)
+    }
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'pong') return
+        handleServerMessage(data)
+      } catch (e) {
+        console.error('[WS] Failed to parse message:', e)
+      }
+    }
+
+    ws.value = socket
+  }
+
+  // ── Message handler ──────────────────────────────────────
+  function handleServerMessage(data: any) {
+    switch (data.type) {
+      // ── Persistence messages ──
+      case 'sessions_loaded': {
+        // Merge backend sessions (don't overwrite locally created ones)
+        const backendSessions: Session[] = data.sessions.map((s: any) => ({
+          id: s.id,
+          title: s.title,
+          messages: [],
+          createdAt: s.createdAt
+        }))
+        // Keep any local sessions not yet in backend list
+        const localOnlyIds = new Set(
+          sessions.value
+            .filter((ls) => !backendSessions.some((bs) => bs.id === ls.id))
+            .map((ls) => ls.id)
+        )
+        const localOnly = sessions.value.filter((s) => localOnlyIds.has(s.id))
+        sessions.value = [...localOnly, ...backendSessions]
+        break
+      }
+      case 'messages_loaded': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session && session.messages.length === 0) {
+          session.messages = data.messages
+          // Extract last AI message for preview
+          const aiMessages = data.messages.filter((m: Message) => m.role === 'assistant')
+          if (aiMessages.length > 0) {
+            session.lastAiMessage = aiMessages[aiMessages.length - 1].content
+          }
+        }
+        break
+      }
+      case 'session_title': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) session.title = data.title
+        break
+      }
+      case 'session_renamed': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) session.title = data.title
+        break
+      }
+      // ── Streaming chat messages ──
+      case 'token': {
+        const session = getCurrentSession()
+        if (!session) break
+        const lastMsg = session.messages[session.messages.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          lastMsg.content += data.content
+          session.lastAiMessage = lastMsg.content
+        } else {
+          addMessage({
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: data.content,
+            timestamp: Date.now()
+          })
+          session.lastAiMessage = data.content
+        }
+        break
+      }
+      case 'message_done':
+        isLoading.value = false
+        break
+      case 'tool_call': {
+        const session = getCurrentSession()
+        if (!session) break
+        const currentMsg = session.messages[session.messages.length - 1]
+        if (currentMsg && currentMsg.role === 'assistant') {
+          if (!currentMsg.toolCalls) currentMsg.toolCalls = []
+          currentMsg.toolCalls.push({
+            name: data.name,
+            args: data.args,
+            status: 'running'
+          })
+        }
+        break
+      }
+      case 'tool_result': {
+        const session = getCurrentSession()
+        if (!session) break
+        const msg = session.messages[session.messages.length - 1]
+        if (msg?.toolCalls) {
+          const tc = msg.toolCalls[msg.toolCalls.length - 1]
+          if (tc) {
+            tc.result = data.result
+            tc.status = data.error ? 'error' : 'done'
+          }
+        }
+        break
+      }
+      case 'error':
+        isLoading.value = false
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: `Error: ${data.message}`,
+          timestamp: Date.now()
+        })
+        break
+    }
+  }
+
+  // ── Send chat message ────────────────────────────────────
+  function sendMessage(content: string) {
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+      console.error('[WS] Not connected')
+      return
+    }
+
+    const message: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+      timestamp: Date.now()
+    }
+
+    addMessage(message)
+    isLoading.value = true
+
+    // Send with message_id so backend can persist it
+    ws.value.send(
+      JSON.stringify({
+        type: 'chat',
+        session_id: currentSessionId.value,
+        message_id: message.id,
+        content
+      })
+    )
+  }
+
+  function disconnect() {
+    stopHeartbeat()
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    if (ws.value) {
+      ws.value.onclose = null
+      ws.value.close()
+      ws.value = null
+    }
+    isConnected.value = false
+  }
+
+  return {
+    sessions,
+    currentSessionId,
+    isConnected,
+    isLoading,
+    createSession,
+    deleteSession,
+    switchSession,
+    getCurrentSession,
+    addMessage,
+    renameSession,
+    sendMessage,
+    connectWebSocket,
+    disconnect
+  }
+})
