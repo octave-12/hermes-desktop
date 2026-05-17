@@ -14,6 +14,10 @@ Desktop GUI client for Hermes Agent - 一个基于 Electron + Vue 3 的桌面 AI
 - 🚀 **静默启动** - 一键启动，无命令窗口干扰，只显示客户端
 - 🔁 **重启所有服务** - 设置面板内一键重启所有服务
 
+## 📸 应用截图
+
+![Hermes Desktop 界面](./docs/images/screenshot.png)
+
 ## 🏗️ 技术架构
 
 ### 前端
