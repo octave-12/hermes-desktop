@@ -56,6 +56,9 @@ class HermesService:
                     continue
                 if stripped in ("Initializing agent...", ""):
                     continue
+                # Skip resume message: "↻ Resumed session ..."
+                if stripped.startswith("↻") or stripped.startswith("Resumed session"):
+                    continue
                 # Hermes header line: "─ ✦ Hermes ─"
                 if "Hermes" in line and ("─" in line or "━" in line or "✦" in line):
                     in_content = True

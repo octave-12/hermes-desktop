@@ -76,7 +76,7 @@ app.whenReady().then(() => {
       // Step 1: Kill ALL existing processes
       console.log('[Restart] Killing all processes...')
       await new Promise<void>((resolve) => {
-        exec('taskkill /F /IM cmd.exe >nul 2>&1 && taskkill /F /IM node.exe >nul 2>&1 && taskkill /F /IM electron.exe >nul 2>&1', (error) => {
+        exec('taskkill /F /IM cmd.exe 2>&1 && taskkill /F /IM node.exe 2>&1 && taskkill /F /IM electron.exe 2>&1', (error) => {
           if (error) {
             console.log('[Restart] Some processes not found, continuing...')
           }
