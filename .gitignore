@@ -3,7 +3,13 @@ out/
 dist/
 .env
 *.log
-backend/__pycache__/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Backend
 backend/.venv/
 backend/*.db
 
