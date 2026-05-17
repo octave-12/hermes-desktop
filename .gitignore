@@ -6,3 +6,6 @@ dist/
 backend/__pycache__/
 backend/.venv/
 backend/*.db
+
+# electron-vite temporary files
+electron.vite.config.*.mjs
