@@ -21,3 +21,7 @@ nul
 
 # Wiki documents (synced to Gitee Wiki repo)
 docs/wiki/
+
+# CodeArts IDE configurations (local development only)
+.codeartsdoer/
+.arts/
