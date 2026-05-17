@@ -39,6 +39,30 @@ async def health_check():
     return {"status": "ok", "service": "hermes-desktop-backend"}
 
 
+@app.get("/api/config")
+async def get_config():
+    """Get current model configuration."""
+    # Get Hermes default model from config.yaml
+    hermes_default = db.get_hermes_default_model()
+    
+    return {
+        "model": db.get_config("model", hermes_default),
+        "apiKey": db.get_config("apiKey", ""),
+        "apiBaseUrl": db.get_config("apiBaseUrl", ""),
+        "temperature": float(db.get_config("temperature", "0.7")),
+        "maxTokens": int(db.get_config("maxTokens", "2048")),
+    }
+
+
+@app.post("/api/config")
+async def update_config(request: dict):
+    """Update model configuration."""
+    for key in ["model", "apiKey", "apiBaseUrl", "temperature", "maxTokens"]:
+        if key in request:
+            db.set_config(key, str(request[key]))
+    return {"status": "ok"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

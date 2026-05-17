@@ -38,6 +38,11 @@ def init_db():
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS config (
+            key     TEXT PRIMARY KEY,
+            value   TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_messages_session
             ON messages(session_id, timestamp);
     """)
@@ -161,3 +166,62 @@ def set_hermes_session_id(session_id: str, hermes_session_id: str):
     )
     conn.commit()
     conn.close()
+
+
+# ── Config operations ────────────────────────────────────────
+
+def get_config(key: str, default: str = "") -> str:
+    """Get a config value by key."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value FROM config WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_config(key: str, value: str):
+    """Set a config value."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_config() -> dict:
+    """Get all config as a dictionary."""
+    conn = get_connection()
+    rows = conn.execute("SELECT key, value FROM config").fetchall()
+    conn.close()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def get_hermes_default_model() -> str:
+    """Read default model from Hermes config.yaml."""
+    import os
+    import yaml
+    
+    hermes_config_path = os.path.expanduser("~/.hermes/config.yaml")
+    
+    try:
+        if os.path.exists(hermes_config_path):
+            with open(hermes_config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                
+            # Try to get model from config
+            if 'model' in config:
+                model_config = config['model']
+                # Return default model if exists
+                if 'default' in model_config:
+                    return model_config['default']
+                # Return provider if no default specified
+                if 'provider' in model_config:
+                    return model_config['provider']
+    except Exception as e:
+        print(f"[Config] Failed to read Hermes config: {e}")
+    
+    # Fallback to default
+    return "deepseek-chat"

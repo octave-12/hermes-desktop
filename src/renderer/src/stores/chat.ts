@@ -28,6 +28,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessions = ref<Session[]>([])
   const currentSessionId = ref<string | null>(null)
   const isConnected = ref(false)
+  const isReconnecting = ref(false)
   const isLoading = ref(false)
   const ws = ref<WebSocket | null>(null)
 
@@ -117,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
   // ── Reconnect ────────────────────────────────────────────
   function scheduleReconnect() {
     if (reconnectTimer) return
+    isReconnecting.value = true
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
     console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1})...`)
     reconnectTimer = setTimeout(() => {
@@ -139,6 +141,7 @@ export const useChatStore = defineStore('chat', () => {
 
     socket.onopen = () => {
       isConnected.value = true
+      isReconnecting.value = false
       reconnectAttempts = 0
       console.log('[WS] Connected')
       startHeartbeat()
@@ -305,6 +308,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function disconnect() {
     stopHeartbeat()
+    isReconnecting.value = false
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -321,6 +325,7 @@ export const useChatStore = defineStore('chat', () => {
     sessions,
     currentSessionId,
     isConnected,
+    isReconnecting,
     isLoading,
     createSession,
     deleteSession,

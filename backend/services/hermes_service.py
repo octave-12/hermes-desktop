@@ -105,18 +105,35 @@ class HermesService:
         # Get hermes session id for multi-turn resume
         hermes_sid = db.get_hermes_session_id(session_id)
 
+        # Get model configuration
+        model = db.get_config("model", db.get_hermes_default_model())
+        api_key = db.get_config("apiKey", "")
+        api_base_url = db.get_config("apiBaseUrl", "")
+        temperature = db.get_config("temperature", "0.7")
+        max_tokens = db.get_config("maxTokens", "2048")
+
         # Build command
         if hermes_sid:
             cmd = [self._hermes_bin, "--resume", hermes_sid, "chat", "-q", user_message]
         else:
             cmd = [self._hermes_bin, "chat", "-q", user_message]
 
+        # Add model configuration as environment variables
+        env = self._env.copy()
+        if api_key:
+            env["OPENAI_API_KEY"] = api_key
+        if api_base_url:
+            env["OPENAI_API_BASE"] = api_base_url
+        env["HERMES_MODEL"] = model
+        env["HERMES_TEMPERATURE"] = temperature
+        env["HERMES_MAX_TOKENS"] = max_tokens
+
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=self._env,
+                env=env,
             )
 
             # Collect full output then parse (need full text to separate content from metadata)

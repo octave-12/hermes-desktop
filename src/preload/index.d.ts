@@ -5,6 +5,7 @@ declare global {
     electron: ElectronAPI
     api: {
       getBackendUrl: () => Promise<string>
+      restartAll: () => Promise<{ success: boolean; error?: string }>
     }
   }
 }

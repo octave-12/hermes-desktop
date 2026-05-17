@@ -34,40 +34,38 @@ Desktop GUI client for Hermes Agent - 一个基于 Electron + Vue 3 的桌面 AI
 - Node.js >= 18
 - Python >= 3.8
 - pnpm
+- WSL (Windows Subsystem for Linux)
 
-### 安装依赖
+### 一键启动（推荐）
+
+直接双击 `start.bat`，脚本会自动：
+1. 清理所有旧进程
+2. 启动后端服务
+3. 启动前端应用
+
+就这么简单！🎉
+
+### 手动启动
+
+**后端服务** (WSL):
+```bash
+wsl -e bash -c "cd /mnt/d/soso/projects/hermes-desktop/backend && .venv/bin/python main.py"
+```
+
+**前端应用** (Windows):
+```powershell
+cd D:\soso\projects\hermes-desktop
+pnpm dev
+```
+
+### 安装依赖（首次运行）
 
 ```bash
 # 前端依赖
 pnpm install
 
-# 后端依赖 (在 WSL 或 Linux 环境中)
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 运行应用
-
-#### 方式一：分别启动
-
-**后端服务** (WSL/Linux):
-```bash
-cd /path/to/hermes-desktop/backend
-source .venv/bin/activate
-python main.py
-```
-
-**前端应用** (Windows):
-```bash
-pnpm dev
-```
-
-#### 方式二：一键启动
-```bash
-# 如果有启动脚本
-./start.sh
+# 后端依赖 (WSL)
+wsl -e bash -c "cd /mnt/d/soso/projects/hermes-desktop/backend && .venv/bin/python -m pip install -r requirements.txt"
 ```
 
 ## 📁 项目结构
@@ -105,14 +103,49 @@ pnpm typecheck    # 类型检查
 pnpm lint         # 代码规范检查
 ```
 
-### 数据库
+## ❓ 常见问题
 
-会话和消息数据默认保存在 `~/.hermes/hermes-desktop.db` (SQLite)。
+### 后端无法启动
 
-### 环境变量
+检查端口 8765 是否被占用：
+```bash
+wsl -e bash -c "ss -tlnp | grep 8765"
+```
 
-- `HERMES_VENV_DIR`: Hermes Agent 虚拟环境路径 (默认: `~/.hermes/hermes-agent/venv`)
-- `HERMES_DB_PATH`: 数据库路径 (默认: `~/.hermes/hermes-desktop.db`)
+清理旧进程：
+```bash
+wsl -e bash -c "pkill -9 -f 'python main.py'"
+```
+
+或者直接运行 `start.bat`，它会自动清理。
+
+### 前端无法连接
+
+1. 确保后端已启动
+2. 点击连接状态手动重连
+3. 或刷新页面 (F5)
+
+### 多个实例问题
+
+应用强制单例运行：
+- 后端：启动前自动 `pkill -9`
+- 前端：Electron 单例锁
+
+只需再次运行 `start.bat`，它会自动清理并重启。
+
+### 数据库位置
+
+会话和消息数据保存在：`~/.hermes/hermes-desktop.db` (SQLite)
+
+### 模型配置
+
+点击 ⚙️ 设置图标可以配置：
+- 模型选择
+- API Key
+- API Base URL
+- Temperature & Max Tokens
+
+配置会保存到 SQLite，也会读取 Hermes 默认配置 `~/.hermes/config.yaml`。
 
 ## 📝 开源协议
 

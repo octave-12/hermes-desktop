@@ -3,7 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-backend-url')
+  getBackendUrl: (): Promise<string> => ipcRenderer.invoke('get-backend-url'),
+  restartAll: (): Promise<{ success: boolean; error?: string }> => 
+    ipcRenderer.invoke('restart-all')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
