@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import HOST, PORT
 from services import database as db
 from services.hermes_service import HermesService
+from services.model_config import model_config_manager
+from services.env_manager import env_manager
 
 
 @asynccontextmanager
@@ -61,6 +63,190 @@ async def update_config(request: dict):
         if key in request:
             db.set_config(key, str(request[key]))
     return {"status": "ok"}
+
+
+# ── Model Management APIs ─────────────────────────────────────
+
+@app.get("/api/models")
+async def get_models():
+    """Get all available models from config.yaml + builtin"""
+    models = model_config_manager.get_available_models()
+    
+    # Check if each model has API key configured
+    for model in models:
+        model['configured'] = env_manager.has_api_key(model['id'])
+    
+    return {"models": models}
+
+
+@app.get("/api/models/{model_id}")
+async def get_model(model_id: str):
+    """Get specific model configuration"""
+    model = model_config_manager.get_model_config(model_id)
+    
+    if not model:
+        return {"error": "Model not found"}
+    
+    # Get API key (masked)
+    api_key = env_manager.get_api_key(model_id)
+    model['apiKey'] = env_manager.mask_api_key(api_key) if api_key else ""
+    model['hasApiKey'] = bool(api_key)
+    model['configured'] = bool(api_key)
+    
+    return model
+
+
+@app.post("/api/models/{model_id}")
+async def update_model(model_id: str, request: dict):
+    """Update or add a model configuration"""
+    model_config = {
+        'id': model_id,
+        'name': request.get('name', model_id),
+        'provider': request.get('provider', 'custom'),
+        'api_base_url': request.get('apiBaseUrl', ''),
+        'api_key_env': request.get('apiKeyEnv', f"{model_id.upper()}_API_KEY"),
+        'temperature': request.get('temperature', 0.7),
+        'max_tokens': request.get('maxTokens', 2048),
+    }
+    
+    # Save to config.yaml
+    success = model_config_manager.add_custom_model(model_config)
+    
+    # Save API key to .env if provided
+    if 'apiKey' in request and request['apiKey']:
+        env_manager.set_api_key(model_id, request['apiKey'])
+    
+    return {"status": "ok" if success else "error"}
+
+
+@app.delete("/api/models/{model_id}")
+async def delete_model(model_id: str):
+    """Delete a custom model"""
+    success = model_config_manager.delete_custom_model(model_id)
+    return {"status": "ok" if success else "error"}
+
+
+@app.post("/api/model/switch")
+async def switch_model(request: dict):
+    """Switch to a different model and sync URL/API Key"""
+    model_id = request.get('model')
+    
+    if not model_id:
+        return {"error": "Model ID required"}
+    
+    # Get model config
+    model = model_config_manager.get_model_config(model_id)
+    
+    if not model:
+        return {"error": "Model not found"}
+    
+    # Save to database
+    db.set_config("model", model_id)
+    db.set_config("apiBaseUrl", model.get('api_base_url', ''))
+    
+    # Check if API key exists
+    has_api_key = env_manager.has_api_key(model_id)
+    
+    return {
+        "status": "ok",
+        "model": model_id,
+        "apiBaseUrl": model.get('api_base_url', ''),
+        "hasApiKey": has_api_key,
+        "needsApiKey": not has_api_key
+    }
+
+
+# ── Environment Variables Management ───────────────────────────
+
+@app.get("/api/env")
+async def get_env():
+    """Get environment variables (masked)"""
+    env_vars = env_manager.read_env()
+    
+    # Mask all values
+    masked = {}
+    for key, value in env_vars.items():
+        masked[key] = env_manager.mask_api_key(value)
+    
+    return {"env": masked}
+
+
+@app.post("/api/env")
+async def update_env(request: dict):
+    """Update environment variables"""
+    env_manager.write_env(request)
+    return {"status": "ok"}
+
+
+@app.get("/api/env/check/{model_id}")
+async def check_api_key(model_id: str):
+    """Check if API key exists for a model"""
+    has_key = env_manager.has_api_key(model_id)
+    api_key = env_manager.get_api_key(model_id)
+    
+    return {
+        "model": model_id,
+        "hasApiKey": has_key,
+        "apiKey": env_manager.mask_api_key(api_key) if api_key else ""
+    }
+
+
+@app.post("/api/env/set")
+async def set_api_key(request: dict):
+    """Set API key for a model"""
+    model_id = request.get('model')
+    api_key = request.get('apiKey')
+    
+    if not model_id or not api_key:
+        return {"error": "Model ID and API Key required"}
+    
+    env_manager.set_api_key(model_id, api_key)
+    return {"status": "ok"}
+
+
+# ── Test Connection ────────────────────────────────────────────
+
+@app.post("/api/test-connection")
+async def test_connection(request: dict):
+    """Test API connection for a model"""
+    import httpx
+    
+    model_id = request.get('model')
+    api_base_url = request.get('apiBaseUrl')
+    api_key = env_manager.get_api_key(model_id)
+    
+    if not api_key:
+        return {"status": "error", "message": "API Key not configured"}
+    
+    if not api_base_url:
+        return {"status": "error", "message": "API Base URL not configured"}
+    
+    try:
+        # Test connection with a simple request
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Try to list models or send a minimal request
+            test_url = f"{api_base_url.rstrip('/')}/models"
+            
+            response = await client.get(test_url, headers=headers)
+            
+            if response.status_code in [200, 401, 403]:
+                # 401/403 means endpoint exists but auth issue
+                if response.status_code == 200:
+                    return {"status": "ok", "message": "Connection successful"}
+                else:
+                    return {"status": "error", "message": "Authentication failed"}
+            else:
+                return {"status": "error", "message": f"HTTP {response.status_code}"}
+    
+    except httpx.TimeoutException:
+        return {"status": "error", "message": "Connection timeout"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @app.websocket("/ws")

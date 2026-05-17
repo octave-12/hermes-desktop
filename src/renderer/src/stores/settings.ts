@@ -1,6 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+export interface ModelProfile {
+  id: string
+  name: string
+  provider: string
+  api_base_url: string
+  api_key_env: string
+  temperature: number
+  max_tokens: number
+  configured: boolean
+}
+
 export interface ModelConfig {
   model: string
   apiKey: string
@@ -11,14 +22,15 @@ export interface ModelConfig {
 
 export const useSettingsStore = defineStore('settings', () => {
   const config = ref<ModelConfig>({
-    model: 'gpt-4o',
+    model: '',
     apiKey: '',
     apiBaseUrl: '',
     temperature: 0.7,
     maxTokens: 2048
   })
 
-  // Load config from backend
+  const availableModels = ref<ModelProfile[]>([])
+
   async function loadConfig(): Promise<ModelConfig | null> {
     try {
       const response = await fetch('http://localhost:8765/api/config')
@@ -33,7 +45,6 @@ export const useSettingsStore = defineStore('settings', () => {
     return null
   }
 
-  // Save config to backend
   async function saveConfig(newConfig: ModelConfig): Promise<boolean> {
     try {
       const response = await fetch('http://localhost:8765/api/config', {
@@ -54,15 +65,135 @@ export const useSettingsStore = defineStore('settings', () => {
     return false
   }
 
-  // Update specific config field
   function updateField<K extends keyof ModelConfig>(key: K, value: ModelConfig[K]) {
     config.value[key] = value
   }
 
+  async function loadModels(): Promise<ModelProfile[]> {
+    try {
+      const response = await fetch('http://localhost:8765/api/models')
+      if (response.ok) {
+        const data = await response.json()
+        availableModels.value = data.models || []
+        return availableModels.value
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error)
+    }
+    return []
+  }
+
+  async function switchModel(modelId: string): Promise<{ success: boolean; needsApiKey?: boolean; apiBaseUrl?: string }> {
+    try {
+      const response = await fetch('http://localhost:8765/api/model/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.status === 'ok') {
+          config.value.model = modelId
+          if (data.apiBaseUrl) {
+            config.value.apiBaseUrl = data.apiBaseUrl
+          }
+          return { 
+            success: true, 
+            needsApiKey: data.needsApiKey,
+            apiBaseUrl: data.apiBaseUrl
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to switch model:', error)
+    }
+    return { success: false }
+  }
+
+  async function setApiKey(modelId: string, apiKey: string): Promise<boolean> {
+    try {
+      const response = await fetch('http://localhost:8765/api/env/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId, apiKey })
+      })
+      
+      return response.ok
+    } catch (error) {
+      console.error('Failed to set API key:', error)
+    }
+    return false
+  }
+
+  async function checkApiKey(modelId: string): Promise<{ hasKey: boolean; maskedKey: string }> {
+    try {
+      const response = await fetch(`http://localhost:8765/api/env/check/${modelId}`)
+      if (response.ok) {
+        const data = await response.json()
+        return { hasKey: data.hasApiKey, maskedKey: data.apiKey }
+      }
+    } catch (error) {
+      console.error('Failed to check API key:', error)
+    }
+    return { hasKey: false, maskedKey: '' }
+  }
+
+  async function testConnection(modelId: string, apiBaseUrl: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch('http://localhost:8765/api/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId, apiBaseUrl })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        return { 
+          success: data.status === 'ok', 
+          message: data.message 
+        }
+      }
+    } catch (error) {
+      console.error('Failed to test connection:', error)
+    }
+    return { success: false, message: 'Test failed' }
+  }
+
+  async function addCustomModel(model: ModelProfile, apiKey?: string): Promise<boolean> {
+    try {
+      const response = await fetch(`http://localhost:8765/api/models/${model.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: model.name,
+          provider: model.provider,
+          apiBaseUrl: model.api_base_url,
+          apiKeyEnv: model.api_key_env,
+          temperature: model.temperature,
+          maxTokens: model.max_tokens,
+          apiKey
+        })
+      })
+      
+      return response.ok
+    } catch (error) {
+      console.error('Failed to add custom model:', error)
+    }
+    return false
+  }
+
   return {
     config,
+    availableModels,
     loadConfig,
     saveConfig,
-    updateField
+    updateField,
+    loadModels,
+    switchModel,
+    setApiKey,
+    checkApiKey,
+    testConnection,
+    addCustomModel
   }
 })
