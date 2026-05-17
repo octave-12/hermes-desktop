@@ -15,3 +15,6 @@ backend/*.db
 
 # electron-vite temporary files
 electron.vite.config.*.mjs
+
+# Windows reserved name files (created by Git Bash)
+nul
