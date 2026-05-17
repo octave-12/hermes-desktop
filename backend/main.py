@@ -69,12 +69,15 @@ async def update_config(request: dict):
 
 @app.get("/api/models")
 async def get_models():
-    """Get all available models from config.yaml + builtin"""
+    """Get all available models from config.yaml"""
     models = model_config_manager.get_available_models()
     
     # Check if each model has API key configured
     for model in models:
-        model['configured'] = env_manager.has_api_key(model['id'])
+        model['configured'] = env_manager.has_api_key(
+            model['id'], 
+            model.get('api_key_env')
+        )
     
     return {"models": models}
 
@@ -88,7 +91,7 @@ async def get_model(model_id: str):
         return {"error": "Model not found"}
     
     # Get API key (masked)
-    api_key = env_manager.get_api_key(model_id)
+    api_key = env_manager.get_api_key(model_id, model.get('api_key_env'))
     model['apiKey'] = env_manager.mask_api_key(api_key) if api_key else ""
     model['hasApiKey'] = bool(api_key)
     model['configured'] = bool(api_key)
@@ -104,7 +107,7 @@ async def update_model(model_id: str, request: dict):
         'name': request.get('name', model_id),
         'provider': request.get('provider', 'custom'),
         'api_base_url': request.get('apiBaseUrl', ''),
-        'api_key_env': request.get('apiKeyEnv', f"{model_id.upper()}_API_KEY"),
+        'api_key_env': request.get('apiKeyEnv', f"{model_id.upper().replace('-', '_')}_API_KEY"),
         'temperature': request.get('temperature', 0.7),
         'max_tokens': request.get('maxTokens', 2048),
     }
@@ -114,15 +117,34 @@ async def update_model(model_id: str, request: dict):
     
     # Save API key to .env if provided
     if 'apiKey' in request and request['apiKey']:
-        env_manager.set_api_key(model_id, request['apiKey'])
+        env_manager.set_api_key(
+            model_id, 
+            request['apiKey'],
+            model_config['api_key_env']
+        )
     
     return {"status": "ok" if success else "error"}
 
 
 @app.delete("/api/models/{model_id}")
 async def delete_model(model_id: str):
-    """Delete a custom model"""
+    """Delete a custom model completely"""
+    # Get model config first to get api_key_env
+    model = model_config_manager.get_model_config(model_id)
+    api_key_env = model.get('api_key_env') if model else None
+    
+    # Delete from config.yaml
     success = model_config_manager.delete_custom_model(model_id)
+    
+    # Delete API Key from .env
+    env_manager.delete_api_key(model_id, api_key_env)
+    
+    # Clear from database if it's current model
+    current_model = db.get_config("model", "")
+    if current_model == model_id:
+        db.set_config("model", "")
+        db.set_config("apiBaseUrl", "")
+    
     return {"status": "ok" if success else "error"}
 
 
@@ -144,8 +166,11 @@ async def switch_model(request: dict):
     db.set_config("model", model_id)
     db.set_config("apiBaseUrl", model.get('api_base_url', ''))
     
+    # Set as default model in Hermes Agent config
+    model_config_manager.set_default_model(model_id)
+    
     # Check if API key exists
-    has_api_key = env_manager.has_api_key(model_id)
+    has_api_key = env_manager.has_api_key(model_id, model.get('api_key_env'))
     
     return {
         "status": "ok",
@@ -181,8 +206,12 @@ async def update_env(request: dict):
 @app.get("/api/env/check/{model_id}")
 async def check_api_key(model_id: str):
     """Check if API key exists for a model"""
-    has_key = env_manager.has_api_key(model_id)
-    api_key = env_manager.get_api_key(model_id)
+    # Get model config to get api_key_env
+    model = model_config_manager.get_model_config(model_id)
+    api_key_env = model.get('api_key_env') if model else None
+    
+    has_key = env_manager.has_api_key(model_id, api_key_env)
+    api_key = env_manager.get_api_key(model_id, api_key_env)
     
     return {
         "model": model_id,
@@ -196,11 +225,12 @@ async def set_api_key(request: dict):
     """Set API key for a model"""
     model_id = request.get('model')
     api_key = request.get('apiKey')
+    api_key_env = request.get('apiKeyEnv')  # Optional
     
     if not model_id or not api_key:
         return {"error": "Model ID and API Key required"}
     
-    env_manager.set_api_key(model_id, api_key)
+    env_manager.set_api_key(model_id, api_key, api_key_env)
     return {"status": "ok"}
 
 
@@ -213,7 +243,12 @@ async def test_connection(request: dict):
     
     model_id = request.get('model')
     api_base_url = request.get('apiBaseUrl')
-    api_key = env_manager.get_api_key(model_id)
+    
+    # Get model config for api_key_env
+    model = model_config_manager.get_model_config(model_id)
+    api_key_env = model.get('api_key_env') if model else None
+    
+    api_key = env_manager.get_api_key(model_id, api_key_env)
     
     if not api_key:
         return {"status": "error", "message": "API Key not configured"}

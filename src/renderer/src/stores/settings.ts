@@ -183,6 +183,19 @@ export const useSettingsStore = defineStore('settings', () => {
     return false
   }
 
+  async function deleteModel(modelId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`http://localhost:8765/api/models/${modelId}`, {
+        method: 'DELETE'
+      })
+      
+      return response.ok
+    } catch (error) {
+      console.error('Failed to delete model:', error)
+    }
+    return false
+  }
+
   return {
     config,
     availableModels,
@@ -194,6 +207,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setApiKey,
     checkApiKey,
     testConnection,
-    addCustomModel
+    addCustomModel,
+    deleteModel
   }
 })

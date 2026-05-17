@@ -23,129 +23,73 @@ class ModelProfile:
 
 
 class ModelConfigManager:
-    """Manager for model configurations"""
+    """Manager for Hermes Agent model configurations"""
     
     def __init__(self):
-        self.hermes_config_path = Path.home() / ".hermes" / "config.yaml"
-        self._builtin_models = self._get_builtin_models()
-    
-    def _get_builtin_models(self) -> Dict[str, ModelProfile]:
-        """Get builtin model configurations"""
-        return {
-            'gpt-4o': ModelProfile(
-                id='gpt-4o',
-                name='GPT-4o',
-                provider='openai',
-                api_base_url='https://api.openai.com/v1',
-                api_key_env='OPENAI_API_KEY'
-            ),
-            'gpt-4o-mini': ModelProfile(
-                id='gpt-4o-mini',
-                name='GPT-4o Mini',
-                provider='openai',
-                api_base_url='https://api.openai.com/v1',
-                api_key_env='OPENAI_API_KEY'
-            ),
-            'gpt-3.5-turbo': ModelProfile(
-                id='gpt-3.5-turbo',
-                name='GPT-3.5 Turbo',
-                provider='openai',
-                api_base_url='https://api.openai.com/v1',
-                api_key_env='OPENAI_API_KEY'
-            ),
-            'claude-3-5-sonnet': ModelProfile(
-                id='claude-3-5-sonnet',
-                name='Claude 3.5 Sonnet',
-                provider='anthropic',
-                api_base_url='https://api.anthropic.com/v1',
-                api_key_env='ANTHROPIC_API_KEY'
-            ),
-            'claude-3-opus': ModelProfile(
-                id='claude-3-opus',
-                name='Claude 3 Opus',
-                provider='anthropic',
-                api_base_url='https://api.anthropic.com/v1',
-                api_key_env='ANTHROPIC_API_KEY'
-            ),
-            'deepseek-chat': ModelProfile(
-                id='deepseek-chat',
-                name='DeepSeek Chat',
-                provider='deepseek',
-                api_base_url='https://api.deepseek.com/v1',
-                api_key_env='DEEPSEEK_API_KEY'
-            ),
-            'deepseek-coder': ModelProfile(
-                id='deepseek-coder',
-                name='DeepSeek Coder',
-                provider='deepseek',
-                api_base_url='https://api.deepseek.com/v1',
-                api_key_env='DEEPSEEK_API_KEY'
-            ),
-            'qwen-max': ModelProfile(
-                id='qwen-max',
-                name='通义千问 Max',
-                provider='qwen',
-                api_base_url='https://dashscope.aliyuncs.com/api/v1',
-                api_key_env='QWEN_API_KEY'
-            ),
-            'qwen-plus': ModelProfile(
-                id='qwen-plus',
-                name='通义千问 Plus',
-                provider='qwen',
-                api_base_url='https://dashscope.aliyuncs.com/api/v1',
-                api_key_env='QWEN_API_KEY'
-            ),
-            'glm-4': ModelProfile(
-                id='glm-4',
-                name='智谱 GLM-4',
-                provider='zhipu',
-                api_base_url='https://open.bigmodel.cn/api/paas/v4',
-                api_key_env='ZHIPU_API_KEY'
-            ),
-        }
+        # Hermes Agent 配置文件位置
+        self.hermes_dir = Path.home() / ".hermes"
+        self.hermes_config_path = self.hermes_dir / "config.yaml"
     
     def read_hermes_config(self) -> Dict:
-        """Read Hermes config.yaml"""
+        """Read Hermes Agent config.yaml"""
         if not self.hermes_config_path.exists():
-            return {}
+            # Create default Hermes config
+            self.hermes_dir.mkdir(parents=True, exist_ok=True)
+            default_config = {
+                'model': {
+                    'default': 'deepseek-chat'
+                },
+                'models': {}
+            }
+            with open(self.hermes_config_path, 'w', encoding='utf-8') as f:
+                yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True)
+            return default_config
         
         try:
             with open(self.hermes_config_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
+                config = yaml.safe_load(f) or {}
+                if 'models' not in config:
+                    config['models'] = {}
+                if 'model' not in config:
+                    config['model'] = {}
+                return config
         except Exception as e:
             print(f"[ModelConfig] Failed to read config: {e}")
-            return {}
+            return {'model': {'default': ''}, 'models': {}}
     
     def get_available_models(self) -> List[Dict]:
-        """Get all available models from config.yaml + builtin"""
+        """Get all available models from config.yaml"""
         models = {}
-        
-        # Load from Hermes config.yaml
         config = self.read_hermes_config()
+        
+        # Load from models field
         if 'models' in config:
             for model_id, model_config in config['models'].items():
                 models[model_id] = {
                     'id': model_id,
                     'name': model_config.get('name', model_id),
-                    'provider': model_config.get('provider', 'unknown'),
+                    'provider': model_config.get('provider', 'custom'),
                     'api_base_url': model_config.get('api_base_url', ''),
-                    'api_key_env': model_config.get('api_key_env', f"{model_id.upper()}_API_KEY"),
+                    'api_key_env': model_config.get('api_key_env', f"{model_id.upper().replace('-', '_')}_API_KEY"),
                     'temperature': model_config.get('temperature', 0.7),
                     'max_tokens': model_config.get('max_tokens', 2048),
                 }
         
-        # Merge with builtin models
-        for model_id, profile in self._builtin_models.items():
-            if model_id not in models:
-                models[model_id] = {
-                    'id': profile.id,
-                    'name': profile.name,
-                    'provider': profile.provider,
-                    'api_base_url': profile.api_base_url,
-                    'api_key_env': profile.api_key_env,
-                    'temperature': profile.temperature,
-                    'max_tokens': profile.max_tokens,
-                }
+        # Also check current model from model.default field
+        current_model = config.get('model', {}).get('default', '')
+        current_provider = config.get('model', {}).get('provider', '')
+        
+        # If current model is set but not in models list, add it
+        if current_model and current_model not in models:
+            models[current_model] = {
+                'id': current_model,
+                'name': current_model,
+                'provider': current_provider or 'custom',
+                'api_base_url': '',
+                'api_key_env': f"{current_model.upper().replace('-', '_')}_API_KEY",
+                'temperature': 0.7,
+                'max_tokens': 2048,
+            }
         
         return list(models.values())
     
@@ -158,7 +102,7 @@ class ModelConfigManager:
         return None
     
     def add_custom_model(self, model_config: Dict) -> bool:
-        """Add a custom model to config.yaml"""
+        """Add a model to Hermes Agent config.yaml"""
         try:
             config = self.read_hermes_config()
             
@@ -170,36 +114,69 @@ class ModelConfigManager:
                 'name': model_config.get('name', model_id),
                 'provider': model_config.get('provider', 'custom'),
                 'api_base_url': model_config.get('api_base_url', ''),
-                'api_key_env': model_config.get('api_key_env', f"{model_id.upper()}_API_KEY"),
+                'api_key_env': model_config.get('api_key_env', f"{model_id.upper().replace('-', '_')}_API_KEY"),
                 'temperature': model_config.get('temperature', 0.7),
                 'max_tokens': model_config.get('max_tokens', 2048),
             }
             
+            # 如果是第一个模型，设为默认
+            if len(config['models']) == 1:
+                if 'model' not in config:
+                    config['model'] = {}
+                config['model']['default'] = model_id
+            
             # Write back to config.yaml
-            self.hermes_config_path.parent.mkdir(parents=True, exist_ok=True)
+            self.hermes_dir.mkdir(parents=True, exist_ok=True)
             with open(self.hermes_config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
             
+            print(f"[ModelConfig] Added model {model_id} to Hermes config")
             return True
         except Exception as e:
             print(f"[ModelConfig] Failed to add model: {e}")
             return False
     
     def delete_custom_model(self, model_id: str) -> bool:
-        """Delete a custom model from config.yaml"""
+        """Delete a model from Hermes Agent config.yaml"""
         try:
             config = self.read_hermes_config()
             
             if 'models' in config and model_id in config['models']:
                 del config['models'][model_id]
                 
+                # 如果删除的是默认模型，更新默认值
+                if 'model' in config and config['model'].get('default') == model_id:
+                    # 选择下一个可用模型作为默认
+                    remaining = list(config.get('models', {}).keys())
+                    config['model']['default'] = remaining[0] if remaining else ''
+                
                 with open(self.hermes_config_path, 'w', encoding='utf-8') as f:
                     yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
                 
+                print(f"[ModelConfig] Deleted model {model_id} from Hermes config")
                 return True
             return False
         except Exception as e:
             print(f"[ModelConfig] Failed to delete model: {e}")
+            return False
+    
+    def set_default_model(self, model_id: str) -> bool:
+        """Set default model for Hermes Agent"""
+        try:
+            config = self.read_hermes_config()
+            
+            if 'model' not in config:
+                config['model'] = {}
+            
+            config['model']['default'] = model_id
+            
+            with open(self.hermes_config_path, 'w', encoding='utf-8') as f:
+                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+            
+            print(f"[ModelConfig] Set default model to {model_id}")
+            return True
+        except Exception as e:
+            print(f"[ModelConfig] Failed to set default model: {e}")
             return False
     
     def get_default_model(self) -> str:

@@ -9,6 +9,8 @@ from typing import AsyncGenerator, Optional
 
 from config import HERMES_BIN, HERMES_VENV_DIR
 from services import database as db
+from services.model_config import model_config_manager
+from services.env_manager import env_manager
 
 
 class HermesService:
@@ -109,9 +111,12 @@ class HermesService:
         hermes_sid = db.get_hermes_session_id(session_id)
 
         # Get model configuration
-        model = db.get_config("model", db.get_hermes_default_model())
-        api_key = db.get_config("apiKey", "")
-        api_base_url = db.get_config("apiBaseUrl", "")
+        model = model_config_manager.get_model_config(db.get_config("model", db.get_hermes_default_model()))
+        model_id = model.get('id', 'deepseek-chat') if model else 'deepseek-chat'
+        api_key_env = model.get('api_key_env') if model else None
+        
+        api_key = env_manager.get_api_key(model_id, api_key_env)
+        api_base_url = db.get_config("apiBaseUrl", model.get('api_base_url', '') if model else '')
         temperature = db.get_config("temperature", "0.7")
         max_tokens = db.get_config("maxTokens", "2048")
 
@@ -127,7 +132,7 @@ class HermesService:
             env["OPENAI_API_KEY"] = api_key
         if api_base_url:
             env["OPENAI_API_BASE"] = api_base_url
-        env["HERMES_MODEL"] = model
+        env["HERMES_MODEL"] = model_id
         env["HERMES_TEMPERATURE"] = temperature
         env["HERMES_MAX_TOKENS"] = max_tokens
 

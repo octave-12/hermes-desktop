@@ -108,24 +108,31 @@ function reconnect() {
 // Refresh model name from backend
 async function refreshModelName() {
   try {
-    const response = await fetch('http://localhost:8765/api/config')
-    if (response.ok) {
-      const config = await response.json()
-      const modelMap: Record<string, string> = {
-        'gpt-4o': 'GPT-4o',
-        'gpt-4o-mini': 'GPT-4o Mini',
-        'gpt-3.5-turbo': 'GPT-3.5 Turbo',
-        'claude-3-5-sonnet': 'Claude 3.5',
-        'claude-3-opus': 'Claude 3 Opus',
-        'qwen-max': '通义千问 Max',
-        'qwen-plus': '通义千问 Plus',
-        'deepseek-chat': 'DeepSeek Chat',
-        'glm-4': '智谱 GLM-4'
-      }
-      currentModelName.value = modelMap[config.model] || config.model
+    // Get model list
+    const modelsResponse = await fetch('http://localhost:8765/api/models')
+    if (!modelsResponse.ok) {
+      currentModelName.value = 'Unknown'
+      return
     }
+    
+    const modelsData = await modelsResponse.json()
+    const models = modelsData.models || []
+    
+    // Get current model config
+    const configResponse = await fetch('http://localhost:8765/api/config')
+    if (!configResponse.ok) {
+      currentModelName.value = 'Unknown'
+      return
+    }
+    
+    const config = await configResponse.json()
+    
+    // Find model name from list
+    const model = models.find((m: any) => m.id === config.model)
+    currentModelName.value = model?.name || config.model || 'Unknown'
   } catch (error) {
     console.error('Failed to load model config:', error)
+    currentModelName.value = 'Unknown'
   }
 }
 

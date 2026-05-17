@@ -7,128 +7,104 @@
       </div>
 
       <div class="modal-body">
-        <!-- Current Model Selection -->
-        <div class="setting-group">
-          <label class="setting-label">当前模型</label>
-          <select v-model="selectedModelId" @change="onModelChange" class="setting-select">
-            <option value="">加载中...</option>
-            <option v-for="model in availableModels" :key="model.id" :value="model.id">
-              {{ model.name }} {{ model.configured ? '✅' : '⚠️' }}
-            </option>
-          </select>
-          <p class="setting-hint">
-            {{ currentModelStatus }}
-          </p>
-        </div>
-
-        <!-- API Base URL -->
-        <div class="setting-group">
-          <label class="setting-label">API Base URL</label>
-          <input
-            v-model="localConfig.apiBaseUrl"
-            class="setting-input"
-            placeholder="例如: https://api.deepseek.com/v1"
-          />
-          <p class="setting-hint">模型的 API 端点地址</p>
-        </div>
-
-        <!-- API Key -->
-        <div class="setting-group">
-          <label class="setting-label">API Key</label>
-          <div class="input-with-toggle">
-            <input
-              v-model="apiKeyInput"
-              :type="showApiKey ? 'text' : 'password'"
-              class="setting-input"
-              :placeholder="apiKeyPlaceholder"
-            />
-            <button class="toggle-visibility" @click="showApiKey = !showApiKey" type="button">
-              {{ showApiKey ? '🙈' : '👁️' }}
+        <!-- Current Model Card -->
+        <div class="current-model-card">
+          <div class="card-header">
+            <span class="card-title">当前模型</span>
+            <button class="btn btn-switch" @click="showModelSelector = true">
+              切换模型 ▼
             </button>
           </div>
-          <p class="setting-hint">
-            <span v-if="hasApiKey">✅ 已在 .env 中配置</span>
-            <span v-else style="color: #f38ba8">⚠️ 未配置，请输入 API Key</span>
-          </p>
+          <div class="card-body">
+            <div class="model-name">
+              {{ currentModelName }}
+              <span class="model-status-badge" :class="hasApiKey ? 'configured' : 'unconfigured'">
+                {{ hasApiKey ? '✅ 已配置' : '⚠️ 未配置' }}
+              </span>
+            </div>
+            <div class="model-url">{{ localConfig.apiBaseUrl || '未设置 API URL' }}</div>
+          </div>
         </div>
 
-        <!-- Test Connection -->
-        <div class="setting-group">
-          <button 
-            class="btn btn-test" 
-            @click="testConnection"
-            :disabled="testingConnection"
-          >
-            {{ testingConnection ? '测试中...' : '🔗 测试连接' }}
-          </button>
-          <p v-if="connectionMessage" class="setting-hint" :class="connectionSuccess ? 'success' : 'error'">
-            {{ connectionMessage }}
-          </p>
+        <!-- Configuration Section -->
+        <div class="config-section">
+          <div class="setting-group">
+            <label class="setting-label">API Base URL</label>
+            <input
+              v-model="localConfig.apiBaseUrl"
+              class="setting-input"
+              placeholder="例如: https://api.deepseek.com/v1"
+            />
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label">API Key</label>
+            <div class="input-with-toggle">
+              <input
+                v-model="apiKeyInput"
+                :type="showApiKey ? 'text' : 'password'"
+                class="setting-input"
+                :placeholder="hasApiKey ? '已配置（输入可更新）' : '请输入 API Key'"
+              />
+              <button class="toggle-visibility" @click="showApiKey = !showApiKey" type="button">
+                {{ showApiKey ? '🙈' : '👁️' }}
+              </button>
+            </div>
+            <p class="setting-hint">
+              <span v-if="hasApiKey">✅ 已在 .env 中配置</span>
+              <span v-else class="warning">⚠️ 未配置，请输入 API Key</span>
+            </p>
+          </div>
+
+          <div class="action-row">
+            <button 
+              class="btn btn-test" 
+              @click="testConnection"
+              :disabled="testingConnection"
+            >
+              {{ testingConnection ? '测试中...' : '🔗 测试连接' }}
+            </button>
+            <p v-if="connectionMessage" class="connection-result" :class="connectionSuccess ? 'success' : 'error'">
+              {{ connectionMessage }}
+            </p>
+          </div>
         </div>
 
         <hr class="divider" />
 
-        <!-- Available Models List -->
+        <!-- Advanced Settings -->
         <div class="setting-group">
-          <div class="section-header">
-            <label class="setting-label">可用模型列表</label>
-            <button class="btn btn-add" @click="showAddModel = true">➕ 添加模型</button>
-          </div>
-          <div class="models-list">
-            <div 
-              v-for="model in availableModels" 
-              :key="model.id" 
-              class="model-item"
-              :class="{ active: model.id === localConfig.model }"
-            >
-              <div class="model-info">
-                <span class="model-name">{{ model.name }}</span>
-                <span class="model-status">
-                  <span v-if="model.configured">✅ 已配置</span>
-                  <span v-else style="color: #f38ba8">⚠️ 未配置</span>
-                </span>
-              </div>
-              <div class="model-actions">
-                <button 
-                  v-if="model.id !== localConfig.model"
-                  class="btn btn-use"
-                  @click="selectModel(model.id)"
-                >
-                  使用
-                </button>
-                <span v-else class="current-label">当前</span>
-              </div>
+          <button class="btn btn-advanced" @click="showAdvanced = !showAdvanced" type="button">
+            {{ showAdvanced ? '▼ 高级设置' : '▶ 高级设置' }}
+          </button>
+          
+          <div v-if="showAdvanced" class="advanced-settings">
+            <div class="setting-group">
+              <label class="setting-label">Temperature: {{ localConfig.temperature }}</label>
+              <input
+                v-model.number="localConfig.temperature"
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                class="setting-range"
+              />
+              <p class="setting-hint">控制回复的创造性（0 = 确定性强，2 = 更随机）</p>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label">Max Tokens: {{ localConfig.maxTokens }}</label>
+              <input
+                v-model.number="localConfig.maxTokens"
+                type="range"
+                min="256"
+                max="8192"
+                step="256"
+                class="setting-range"
+              />
+              <p class="setting-hint">单次回复的最大 token 数量</p>
             </div>
           </div>
-        </div>
-
-        <hr class="divider" />
-
-        <!-- Model Parameters -->
-        <div class="setting-group">
-          <label class="setting-label">Temperature: {{ localConfig.temperature }}</label>
-          <input
-            v-model.number="localConfig.temperature"
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            class="setting-range"
-          />
-          <p class="setting-hint">控制回复的创造性（0 = 确定性强，2 = 更随机）</p>
-        </div>
-
-        <div class="setting-group">
-          <label class="setting-label">Max Tokens: {{ localConfig.maxTokens }}</label>
-          <input
-            v-model.number="localConfig.maxTokens"
-            type="range"
-            min="256"
-            max="8192"
-            step="256"
-            class="setting-range"
-          />
-          <p class="setting-hint">单次回复的最大 token 数量</p>
         </div>
       </div>
 
@@ -145,20 +121,68 @@
       </div>
     </div>
 
+    <!-- Model Selector Modal -->
+    <div v-if="showModelSelector" class="modal-overlay" @click.self="showModelSelector = false">
+      <div class="modal-content model-selector-modal">
+        <div class="modal-header">
+          <h2>选择模型</h2>
+          <button class="close-btn" @click="showModelSelector = false">×</button>
+        </div>
+        
+        <div class="modal-body">
+          <div class="models-list">
+            <div 
+              v-for="model in availableModels" 
+              :key="model.id" 
+              class="model-item"
+              :class="{ active: model.id === localConfig.model }"
+            >
+              <div class="model-info" @click="selectModel(model.id)">
+                <div class="model-name-row">
+                  <span class="model-name">{{ model.name }}</span>
+                  <span v-if="model.id === localConfig.model" class="current-badge">当前</span>
+                </div>
+                <span class="model-status">
+                  <span v-if="model.configured" class="configured">✅ 已配置</span>
+                  <span v-else class="unconfigured">⚠️ 未配置</span>
+                </span>
+              </div>
+              <div class="model-actions">
+                <span class="model-provider">{{ model.provider }}</span>
+                <button 
+                  class="btn btn-delete-model" 
+                  @click.stop="confirmDeleteModel(model.id, model.name)"
+                  title="删除模型"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="add-model-section">
+            <button class="btn btn-add-full" @click="openAddModel">
+              ➕ 添加新模型
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Model Modal -->
     <div v-if="showAddModel" class="modal-overlay" @click.self="showAddModel = false">
       <div class="modal-content add-model-modal">
         <div class="modal-header">
           <h2>➕ 添加新模型</h2>
-          <button class="close-btn" @click="showAddModel = false">×</button>
+          <button class="close-btn" @click="closeAddModel">×</button>
         </div>
         <div class="modal-body">
           <div class="setting-group">
-            <label class="setting-label">模型 ID</label>
+            <label class="setting-label">模型 ID *</label>
             <input v-model="newModel.id" class="setting-input" placeholder="例如: my-custom-model" />
           </div>
           <div class="setting-group">
-            <label class="setting-label">显示名称</label>
+            <label class="setting-label">显示名称 *</label>
             <input v-model="newModel.name" class="setting-input" placeholder="例如: My Custom Model" />
           </div>
           <div class="setting-group">
@@ -166,16 +190,16 @@
             <input v-model="newModel.provider" class="setting-input" placeholder="例如: openai" />
           </div>
           <div class="setting-group">
-            <label class="setting-label">API Base URL</label>
+            <label class="setting-label">API Base URL *</label>
             <input v-model="newModel.api_base_url" class="setting-input" placeholder="https://api.example.com/v1" />
           </div>
           <div class="setting-group">
-            <label class="setting-label">API Key</label>
+            <label class="setting-label">API Key *</label>
             <input v-model="newModel.apiKey" type="password" class="setting-input" placeholder="输入 API Key" />
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showAddModel = false">取消</button>
+          <button class="btn btn-secondary" @click="closeAddModel">取消</button>
           <button class="btn btn-primary" @click="addCustomModel" :disabled="addingModel">
             {{ addingModel ? '添加中...' : '添加模型' }}
           </button>
@@ -219,7 +243,9 @@ const testingConnection = ref(false)
 const connectionMessage = ref('')
 const connectionSuccess = ref(false)
 
+const showModelSelector = ref(false)
 const showAddModel = ref(false)
+const showAdvanced = ref(false)
 const addingModel = ref(false)
 const newModel = ref({
   id: '',
@@ -229,16 +255,9 @@ const newModel = ref({
   apiKey: ''
 })
 
-const currentModelStatus = computed(() => {
-  const model = availableModels.value.find(m => m.id === selectedModelId.value)
-  if (!model) return ''
-  return model.configured 
-    ? '✅ 模型已配置，可以使用' 
-    : '⚠️ API Key 未配置，请输入'
-})
-
-const apiKeyPlaceholder = computed(() => {
-  return hasApiKey.value ? '已配置（输入可更新）' : '请输入 API Key'
+const currentModelName = computed(() => {
+  const model = availableModels.value.find(m => m.id === localConfig.value.model)
+  return model?.name || localConfig.value.model || '未选择'
 })
 
 watch(
@@ -270,8 +289,6 @@ async function loadCurrentConfig() {
         maxTokens: data.maxTokens || 2048
       }
       selectedModelId.value = localConfig.value.model
-      
-      // Check API key status
       await checkApiKeyStatus()
     }
   } catch (error) {
@@ -305,31 +322,25 @@ async function checkApiKeyStatus() {
   }
 }
 
-async function onModelChange() {
-  if (!selectedModelId.value) return
+async function selectModel(modelId: string) {
+  selectedModelId.value = modelId
   
   try {
-    const result = await settingsStore.switchModel(selectedModelId.value)
+    const result = await settingsStore.switchModel(modelId)
     
     if (result.success) {
-      localConfig.value.model = selectedModelId.value
+      localConfig.value.model = modelId
       if (result.apiBaseUrl) {
         localConfig.value.apiBaseUrl = result.apiBaseUrl
       }
       
-      // Check API key for new model
       await checkApiKeyStatus()
-      
       connectionMessage.value = ''
+      showModelSelector.value = false
     }
   } catch (error) {
     console.error('[Settings] Failed to switch model:', error)
   }
-}
-
-async function selectModel(modelId: string) {
-  selectedModelId.value = modelId
-  await onModelChange()
 }
 
 async function testConnection() {
@@ -343,7 +354,6 @@ async function testConnection() {
   connectionMessage.value = ''
   
   try {
-    // First save API key if input
     if (apiKeyInput.value) {
       await settingsStore.setApiKey(selectedModelId.value, apiKeyInput.value)
       hasApiKey.value = true
@@ -367,12 +377,10 @@ async function testConnection() {
 async function saveSettings() {
   saving.value = true
   try {
-    // Save API key if changed
     if (apiKeyInput.value) {
       await settingsStore.setApiKey(selectedModelId.value, apiKeyInput.value)
     }
     
-    // Save config
     await settingsStore.saveConfig(localConfig.value)
     emit('close')
   } catch (error) {
@@ -383,9 +391,24 @@ async function saveSettings() {
   }
 }
 
+function openAddModel() {
+  showModelSelector.value = false
+  showAddModel.value = true
+}
+
+function closeAddModel() {
+  showAddModel.value = false
+  newModel.value = { id: '', name: '', provider: '', api_base_url: '', apiKey: '' }
+}
+
 async function addCustomModel() {
   if (!newModel.value.id || !newModel.value.api_base_url) {
     alert('请填写模型 ID 和 API URL')
+    return
+  }
+  
+  if (!newModel.value.apiKey) {
+    alert('请输入 API Key')
     return
   }
   
@@ -409,8 +432,7 @@ async function addCustomModel() {
     
     if (success) {
       await loadModels()
-      showAddModel.value = false
-      newModel.value = { id: '', name: '', provider: '', api_base_url: '', apiKey: '' }
+      closeAddModel()
     } else {
       alert('添加模型失败')
     }
@@ -419,6 +441,38 @@ async function addCustomModel() {
     alert('添加模型失败')
   } finally {
     addingModel.value = false
+  }
+}
+
+async function confirmDeleteModel(modelId: string, modelName: string) {
+  if (!confirm(`确定要删除模型 "${modelName}" 吗？\n\n这将同时删除：\n- 模型配置\n- API Key\n- API URL`)) {
+    return
+  }
+  
+  try {
+    const success = await settingsStore.deleteModel(modelId)
+    
+    if (success) {
+      await loadModels()
+      
+      // 如果删除的是当前模型，清空选择
+      if (modelId === localConfig.value.model) {
+        localConfig.value.model = ''
+        localConfig.value.apiBaseUrl = ''
+        hasApiKey.value = false
+        apiKeyInput.value = ''
+      }
+      
+      // 如果没有模型了，关闭选择器
+      if (availableModels.value.length === 0) {
+        showModelSelector.value = false
+      }
+    } else {
+      alert('删除模型失败')
+    }
+  } catch (error) {
+    console.error('Failed to delete model:', error)
+    alert('删除模型失败')
   }
 }
 
@@ -469,15 +523,19 @@ onMounted(async () => {
   background: #1e1e2e;
   border-radius: 12px;
   width: 90%;
-  max-width: 550px;
+  max-width: 500px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-.add-model-modal {
+.model-selector-modal {
   max-width: 450px;
+}
+
+.add-model-modal {
+  max-width: 420px;
 }
 
 .modal-header {
@@ -490,7 +548,7 @@ onMounted(async () => {
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   color: #cdd6f4;
 }
 
@@ -514,22 +572,87 @@ onMounted(async () => {
 .modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px 24px;
+}
+
+/* Current Model Card */
+.current-model-card {
+  background: linear-gradient(135deg, #313244 0%, #1e1e2e 100%);
+  border: 1px solid #45475a;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(137, 180, 250, 0.1);
+  border-bottom: 1px solid #45475a;
+}
+
+.card-title {
+  color: #89b4fa;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.card-body {
+  padding: 16px;
+}
+
+.model-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #cdd6f4;
+  margin-bottom: 8px;
+}
+
+.model-status-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: normal;
+}
+
+.model-status-badge.configured {
+  background: rgba(166, 227, 161, 0.2);
+  color: #a6e3a1;
+}
+
+.model-status-badge.unconfigured {
+  background: rgba(243, 139, 168, 0.2);
+  color: #f38ba8;
+}
+
+.model-url {
+  font-size: 0.8rem;
+  color: #6c7086;
+  font-family: monospace;
+}
+
+/* Config Section */
+.config-section {
+  margin-bottom: 20px;
 }
 
 .setting-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .setting-label {
   display: block;
   color: #cdd6f4;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 500;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
-.setting-select,
 .setting-input {
   width: 100%;
   padding: 10px 12px;
@@ -542,7 +665,6 @@ onMounted(async () => {
   transition: border-color 0.2s;
 }
 
-.setting-select:focus,
 .setting-input:focus {
   border-color: #89b4fa;
 }
@@ -574,24 +696,33 @@ onMounted(async () => {
   color: #cdd6f4;
 }
 
-.setting-range {
-  width: 100%;
-  margin: 8px 0;
-  cursor: pointer;
-}
-
 .setting-hint {
   color: #6c7086;
-  font-size: 0.8rem;
-  margin: 6px 0 0;
-  line-height: 1.4;
+  font-size: 0.75rem;
+  margin: 4px 0 0;
 }
 
-.setting-hint.success {
+.setting-hint .warning {
+  color: #f38ba8;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.connection-result {
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.connection-result.success {
   color: #a6e3a1;
 }
 
-.setting-hint.error {
+.connection-result.error {
   color: #f38ba8;
 }
 
@@ -601,19 +732,15 @@ onMounted(async () => {
   margin: 20px 0;
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+.setting-range {
+  width: 100%;
+  margin: 8px 0;
+  cursor: pointer;
 }
 
-.section-header .setting-label {
-  margin-bottom: 0;
-}
-
+/* Models List */
 .models-list {
-  max-height: 200px;
+  max-height: 320px;
   overflow-y: auto;
   border: 1px solid #313244;
   border-radius: 8px;
@@ -624,8 +751,9 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid #313244;
+  cursor: pointer;
   transition: background 0.2s;
 }
 
@@ -638,7 +766,8 @@ onMounted(async () => {
 }
 
 .model-item.active {
-  background: #313244;
+  background: rgba(137, 180, 250, 0.1);
+  border-left: 3px solid #89b4fa;
 }
 
 .model-info {
@@ -647,26 +776,71 @@ onMounted(async () => {
   gap: 4px;
 }
 
-.model-name {
+.model-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-name-row .model-name {
   color: #cdd6f4;
   font-size: 0.9rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.current-badge {
+  background: #89b4fa;
+  color: #1e1e2e;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
 }
 
 .model-status {
   font-size: 0.75rem;
 }
 
+.model-status .configured {
+  color: #a6e3a1;
+}
+
+.model-status .unconfigured {
+  color: #f38ba8;
+}
+
+.model-provider {
+  font-size: 0.75rem;
+  color: #6c7086;
+  text-transform: uppercase;
+}
+
 .model-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
-.current-label {
-  color: #89b4fa;
-  font-size: 0.85rem;
-  font-weight: 500;
+.btn-delete-model {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
 }
 
+.btn-delete-model:hover {
+  opacity: 1;
+}
+
+.add-model-section {
+  margin-top: 16px;
+}
+
+/* Modal Footer */
 .modal-footer {
   display: flex;
   justify-content: space-between;
@@ -680,6 +854,7 @@ onMounted(async () => {
   gap: 12px;
 }
 
+/* Buttons */
 .btn {
   padding: 8px 16px;
   border-radius: 6px;
@@ -727,10 +902,20 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
+.btn-switch {
+  background: #45475a;
+  color: #cdd6f4;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.btn-switch:hover {
+  background: #585b70;
+}
+
 .btn-test {
   background: #45475a;
   color: #cdd6f4;
-  width: 100%;
 }
 
 .btn-test:hover:not(:disabled) {
@@ -742,25 +927,38 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.btn-add {
-  background: #45475a;
-  color: #cdd6f4;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+.btn-advanced {
+  background: transparent;
+  color: #6c7086;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 0.85rem;
+  border: 1px dashed #313244;
 }
 
-.btn-add:hover {
+.btn-advanced:hover {
+  background: #181825;
+  color: #cdd6f4;
+  border-color: #45475a;
+}
+
+.btn-add-full {
+  background: #45475a;
+  color: #cdd6f4;
+  width: 100%;
+  padding: 10px;
+}
+
+.btn-add-full:hover {
   background: #585b70;
 }
 
-.btn-use {
-  background: #89b4fa;
-  color: #1e1e2e;
-  padding: 4px 12px;
-  font-size: 0.8rem;
-}
-
-.btn-use:hover {
-  background: #74c7ec;
+.advanced-settings {
+  margin-top: 16px;
+  padding: 16px;
+  background: #181825;
+  border-radius: 8px;
+  border: 1px solid #313244;
 }
 </style>
