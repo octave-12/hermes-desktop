@@ -59,7 +59,8 @@
     </div>
 
     <!-- Input area -->
-    <div class="input-area">
+    <div class="input-area" :style="{ height: inputAreaHeight + 'px' }">
+      <div class="resize-handle" @mousedown="startResize"></div>
       <div class="input-wrapper">
         <textarea
           ref="inputRef"
@@ -79,13 +80,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
 
 const chatStore = useChatStore()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
 const inputRef = ref<HTMLTextAreaElement>()
+const inputAreaHeight = ref(80)
+const isResizing = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
 
@@ -119,6 +122,27 @@ function scrollToBottom() {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
   })
+}
+
+function startResize(e: MouseEvent) {
+  isResizing.value = true
+  const startY = e.clientY
+  const startHeight = inputAreaHeight.value
+
+  function onMouseMove(e: MouseEvent) {
+    const deltaY = startY - e.clientY
+    const newHeight = Math.min(300, Math.max(60, startHeight + deltaY))
+    inputAreaHeight.value = newHeight
+  }
+
+  function onMouseUp() {
+    isResizing.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
 }
 
 watch(
@@ -315,8 +339,28 @@ onMounted(async () => {
 
 /* ── Input area ── */
 .input-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   padding: 12px 16px 16px;
   border-top: 1px solid #313244;
+  min-height: 60px;
+  max-height: 300px;
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  z-index: 10;
+}
+
+.resize-handle:hover {
+  background: #45475a;
 }
 
 .input-wrapper {
@@ -327,6 +371,7 @@ onMounted(async () => {
   border: 1px solid #313244;
   border-radius: 12px;
   padding: 8px 12px;
+  flex: 1;
 }
 
 .input-wrapper textarea {
@@ -339,7 +384,7 @@ onMounted(async () => {
   resize: none;
   font-family: inherit;
   line-height: 1.5;
-  max-height: 120px;
+  height: 100%;
 }
 
 .input-wrapper textarea::placeholder {
