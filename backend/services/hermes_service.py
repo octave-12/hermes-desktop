@@ -118,18 +118,19 @@ class HermesService:
         content_parts = []
         done_event = asyncio.Event()
         
+        # Get event loop in main thread
+        loop = asyncio.get_event_loop()
+        
         def stream_callback(delta: str):
             """Synchronous callback - puts delta into queue."""
             content_parts.append(delta)
             try:
-                loop = asyncio.get_event_loop()
                 loop.call_soon_threadsafe(queue.put_nowait, delta)
             except:
                 pass
         
         async def run_agent():
             """Run agent in thread pool."""
-            loop = asyncio.get_event_loop()
             try:
                 result = await loop.run_in_executor(
                     None,
