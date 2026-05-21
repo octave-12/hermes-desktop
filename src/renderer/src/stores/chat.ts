@@ -197,6 +197,11 @@ export const useChatStore = defineStore('chat', () => {
         )
         const localOnly = sessions.value.filter((s) => localOnlyIds.has(s.id))
         sessions.value = [...localOnly, ...backendSessions]
+        
+        // Auto-select first session if none selected
+        if (!currentSessionId.value && sessions.value.length > 0) {
+          switchSession(sessions.value[0].id)
+        }
         break
       }
       case 'messages_loaded': {
