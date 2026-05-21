@@ -86,7 +86,10 @@ def update_session_title(session_id: str, title: str):
 
 
 def delete_session(session_id: str):
+    """Delete session and all its messages (CASCADE)."""
     conn = get_connection()
+    # Ensure foreign keys are enabled for CASCADE to work
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
     conn.commit()
     conn.close()
