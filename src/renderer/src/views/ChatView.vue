@@ -48,7 +48,7 @@
       </div>
 
       <!-- Loading indicator -->
-      <div v-if="chatStore.isLoading" class="message-row assistant">
+      <div v-if="currentSession?.isLoading" class="message-row assistant">
         <div class="avatar ai-avatar">H</div>
         <div class="bubble ai-bubble">
           <div class="typing-indicator">
@@ -69,7 +69,7 @@
           @keydown.enter.exact.prevent="handleSend"
           rows="1"
         ></textarea>
-        <button class="send-btn" @click="handleSend" :disabled="!inputText.trim() || chatStore.isLoading">
+        <button class="send-btn" @click="handleSend" :disabled="!inputText.trim() || currentSession?.isLoading">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
           </svg>
@@ -247,8 +247,8 @@ onMounted(async () => {
 }
 
 .user-bubble {
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: #313244;
+  color: #cdd6f4;
   border-top-right-radius: 4px;
 }
 

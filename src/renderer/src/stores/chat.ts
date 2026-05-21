@@ -22,6 +22,7 @@ export interface Session {
   messages: Message[]
   createdAt: number
   lastAiMessage?: string
+  isLoading?: boolean
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -219,14 +220,14 @@ export const useChatStore = defineStore('chat', () => {
       }
       // ── Streaming chat messages ──
       case 'token': {
-        const session = getCurrentSession()
+        const session = sessions.value.find((s) => s.id === data.session_id)
         if (!session) break
         const lastMsg = session.messages[session.messages.length - 1]
         if (lastMsg && lastMsg.role === 'assistant') {
           lastMsg.content += data.content
           session.lastAiMessage = lastMsg.content
         } else {
-          addMessage({
+          session.messages.push({
             id: crypto.randomUUID(),
             role: 'assistant',
             content: data.content,
@@ -236,11 +237,13 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
       }
-      case 'message_done':
-        isLoading.value = false
+      case 'message_done': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) session.isLoading = false
         break
+      }
       case 'tool_call': {
-        const session = getCurrentSession()
+        const session = sessions.value.find((s) => s.id === data.session_id)
         if (!session) break
         const currentMsg = session.messages[session.messages.length - 1]
         if (currentMsg && currentMsg.role === 'assistant') {
@@ -254,7 +257,7 @@ export const useChatStore = defineStore('chat', () => {
         break
       }
       case 'tool_result': {
-        const session = getCurrentSession()
+        const session = sessions.value.find((s) => s.id === data.session_id)
         if (!session) break
         const msg = session.messages[session.messages.length - 1]
         if (msg?.toolCalls) {
@@ -266,15 +269,17 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
       }
-      case 'error':
-        isLoading.value = false
-        addMessage({
+      case 'error': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) session.isLoading = false
+        session?.messages.push({
           id: crypto.randomUUID(),
           role: 'system',
           content: `Error: ${data.message}`,
           timestamp: Date.now()
         })
         break
+      }
     }
   }
 
@@ -285,6 +290,9 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    const session = getCurrentSession()
+    if (!session) return
+
     const message: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -292,8 +300,8 @@ export const useChatStore = defineStore('chat', () => {
       timestamp: Date.now()
     }
 
-    addMessage(message)
-    isLoading.value = true
+    session.messages.push(message)
+    session.isLoading = true
 
     // Send with message_id so backend can persist it
     ws.value.send(

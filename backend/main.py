@@ -14,6 +14,7 @@ from services import database as db
 from services.hermes_service import HermesService
 from services.model_config import model_config_manager
 from services.env_manager import env_manager
+from services.memory_manager import memory_manager
 
 
 @asynccontextmanager
@@ -284,6 +285,52 @@ async def test_connection(request: dict):
         return {"status": "error", "message": str(e)}
 
 
+# ── Memory Management APIs ─────────────────────────────────────
+
+@app.get("/api/memories")
+async def get_memories():
+    """Get list of memory types"""
+    return {"memories": memory_manager.get_memory_types()}
+
+
+@app.get("/api/memories/{memory_id}")
+async def get_memory(memory_id: str):
+    """Get content of a memory"""
+    content = memory_manager.get_memory_content(memory_id)
+    if content is None:
+        return {"error": "Memory not found"}
+    return {"id": memory_id, "content": content}
+
+
+@app.get("/api/memories/{memory_id}/entries")
+async def get_memory_entries(memory_id: str):
+    """Get memory entries (split by § separator)"""
+    entries = memory_manager.get_memory_entries(memory_id)
+    return {"id": memory_id, "entries": entries}
+
+
+@app.delete("/api/memories/{memory_id}/entries/{entry_index}")
+async def delete_memory_entry(memory_id: str, entry_index: int):
+    """Delete a single memory entry"""
+    success = memory_manager.delete_memory_entry(memory_id, entry_index)
+    return {"status": "ok" if success else "error"}
+
+
+@app.put("/api/memories/{memory_id}")
+async def update_memory(memory_id: str, request: dict):
+    """Update memory content"""
+    content = request.get("content", "")
+    success = memory_manager.update_memory_content(memory_id, content)
+    return {"status": "ok" if success else "error"}
+
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_memory(memory_id: str):
+    """Delete a memory"""
+    success = memory_manager.delete_memory(memory_id)
+    return {"status": "ok" if success else "error"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -347,9 +394,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_msg_id = message.get("message_id", str(uuid.uuid4()))
 
                 async for chunk in hermes_service.chat(session_id, content, user_msg_id):
+                    chunk["session_id"] = session_id
                     await websocket.send_text(json.dumps(chunk))
 
-                await websocket.send_text(json.dumps({"type": "message_done"}))
+                await websocket.send_text(json.dumps({"type": "message_done", "session_id": session_id}))
 
     except WebSocketDisconnect:
         print("[WS] Client disconnected")

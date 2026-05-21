@@ -6,7 +6,27 @@
         <button class="close-btn" @click="$emit('close')">×</button>
       </div>
 
+      <!-- Tab Navigation -->
+      <div class="tab-nav">
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'model' }"
+          @click="activeTab = 'model'"
+        >
+          🤖 模型配置
+        </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'memory' }"
+          @click="activeTab = 'memory'"
+        >
+          🧠 记忆管理
+        </button>
+      </div>
+
       <div class="modal-body">
+        <!-- Model Settings Tab -->
+        <div v-if="activeTab === 'model'">
         <!-- Current Model Card -->
         <div class="current-model-card">
           <div class="card-header">
@@ -105,6 +125,12 @@
               <p class="setting-hint">单次回复的最大 token 数量</p>
             </div>
           </div>
+        </div>
+        </div>
+
+        <!-- Memory Management Tab -->
+        <div v-if="activeTab === 'memory'">
+          <MemoryManager />
         </div>
       </div>
 
@@ -212,6 +238,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { useSettingsStore, type ModelConfig, type ModelProfile } from '@/stores/settings'
+import MemoryManager from './MemoryManager.vue'
 
 const emit = defineEmits<{
   close: []
@@ -222,6 +249,8 @@ const props = defineProps<{
 }>()
 
 const settingsStore = useSettingsStore()
+
+const activeTab = ref<'model' | 'memory'>('model')
 
 const localConfig = ref<ModelConfig>({
   model: '',
@@ -523,11 +552,39 @@ onMounted(async () => {
   background: #1e1e2e;
   border-radius: 12px;
   width: 90%;
-  max-width: 500px;
+  max-width: 600px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tab-nav {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #313244;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: #313244;
+  border: none;
+  border-radius: 8px;
+  color: #a6adc8;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: #45475a;
+}
+
+.tab-btn.active {
+  background: #89b4fa;
+  color: #1e1e2e;
 }
 
 .model-selector-modal {
