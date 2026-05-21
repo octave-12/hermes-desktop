@@ -234,6 +234,7 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now()
           })
           session.lastAiMessage = data.content
+          session.isLoading = false
         }
         break
       }
