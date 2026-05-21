@@ -77,8 +77,19 @@
           @keydown.enter.exact.prevent="handleSend"
           rows="1"
         ></textarea>
-        <button class="send-btn" @click="handleSend" :disabled="!inputText.trim() || currentSession?.isLoading">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button 
+          class="send-btn" 
+          :class="{ 'is-loading': currentSession?.isLoading }"
+          @click="handleSendOrStop"
+        >
+          <!-- Loading spinner (when AI is responding) -->
+          <svg v-if="currentSession?.isLoading" class="spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="20">
+              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+          <!-- Send icon (when idle) -->
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
           </svg>
         </button>
@@ -119,7 +130,7 @@ function renderMarkdown(content: string): string {
 
 function handleSend() {
   const text = inputText.value.trim()
-  if (!text || chatStore.isLoading) return
+  if (!text) return
 
   if (!chatStore.currentSessionId) {
     chatStore.createSession()
@@ -128,6 +139,17 @@ function handleSend() {
   chatStore.sendMessage(text)
   inputText.value = ''
   scrollToBottom()
+}
+
+function handleSendOrStop() {
+  // If AI is responding, stop it
+  if (currentSession.value?.isLoading) {
+    chatStore.stopGeneration(currentSession.value.id)
+    return
+  }
+  
+  // Otherwise send message
+  handleSend()
 }
 
 function scrollToBottom() {
@@ -434,7 +456,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.2s;
+  transition: all 0.2s;
 }
 
 .send-btn:disabled {
@@ -444,5 +466,13 @@ onMounted(async () => {
 
 .send-btn:not(:disabled):hover {
   opacity: 0.8;
+}
+
+.send-btn.is-loading {
+  background: #f38ba8;
+}
+
+.send-btn.is-loading:hover {
+  background: #eba0ac;
 }
 </style>

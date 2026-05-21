@@ -388,6 +388,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     "title": title,
                 }))
 
+            elif msg_type == "stop_generation":
+                session_id = message["session_id"]
+                hermes_service.stop_generation(session_id)
+                await websocket.send_text(json.dumps({
+                    "type": "generation_stopped",
+                    "session_id": session_id,
+                }))
+
             elif msg_type == "chat":
                 session_id = message.get("session_id", str(uuid.uuid4()))
                 content = message["content"]

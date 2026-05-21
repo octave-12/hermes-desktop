@@ -350,6 +350,16 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ── Stop generation ─────────────────────────────────────────
+  function stopGeneration(sessionId: string) {
+    const session = sessions.value.find((s) => s.id === sessionId)
+    if (session) {
+      session.isLoading = false
+      // Send stop signal to backend
+      wsSend({ type: 'stop_generation', session_id: sessionId })
+    }
+  }
+
   function disconnect() {
     stopHeartbeat()
     isReconnecting.value = false
@@ -379,6 +389,7 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     renameSession,
     sendMessage,
+    stopGeneration,
     connectWebSocket,
     disconnect
   }

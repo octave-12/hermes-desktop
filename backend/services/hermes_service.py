@@ -38,6 +38,17 @@ class HermesService:
         self._env["PATH"] = venv_bin + ":" + self._env.get("PATH", "")
         self._env["VIRTUAL_ENV"] = HERMES_VENV_DIR
         self._agent_cache = {}
+        self._active_tasks = {}
+
+    def stop_generation(self, session_id: str):
+        """Stop active generation for a session."""
+        if session_id in self._active_tasks:
+            del self._active_tasks[session_id]
+            print(f"[INFO] Generation stopped for session {session_id}")
+
+    def is_generation_active(self, session_id: str) -> bool:
+        """Check if generation is active for a session."""
+        return session_id in self._active_tasks
 
     def _get_agent(self, model_id: str, api_key: str, api_base_url: str) -> Optional['AIAgent']:
         """Get or create AIAgent instance for a model."""
@@ -66,33 +77,47 @@ class HermesService:
         """
         Send message to Hermes Agent and stream back the response.
         """
-        # Persist user message
-        db.add_message(user_msg_id, session_id, "user", user_message)
-
-        # Update session title from first user message
-        messages = db.get_session_messages(session_id)
-        user_messages = [m for m in messages if m["role"] == "user"]
-        if len(user_messages) == 1:
-            title = user_message[:30] or "新对话"
-            db.update_session_title(session_id, title)
-            yield {"type": "session_title", "session_id": session_id, "title": title}
-
-        # Get model configuration
-        model = model_config_manager.get_model_config(db.get_config("model", db.get_hermes_default_model()))
-        model_id = model.get('id', 'deepseek-chat') if model else 'deepseek-chat'
-        api_key_env = model.get('api_key_env') if model else None
+        # Mark as active
+        self._active_tasks[session_id] = True
         
-        api_key = env_manager.get_api_key(model_id, api_key_env)
-        api_base_url = db.get_config("apiBaseUrl", model.get('api_base_url', '') if model else '')
+        try:
+            # Persist user message
+            db.add_message(user_msg_id, session_id, "user", user_message)
 
-        # Try using Python API first
-        if HERMES_API_AVAILABLE and api_key:
-            async for chunk in self._chat_via_api(session_id, user_message, model_id, api_key, api_base_url):
-                yield chunk
-        else:
-            # Fallback to CLI
-            async for chunk in self._chat_via_cli(session_id, user_message, model_id, api_key, api_base_url):
-                yield chunk
+            # Update session title from first user message
+            messages = db.get_session_messages(session_id)
+            user_messages = [m for m in messages if m["role"] == "user"]
+            if len(user_messages) == 1:
+                title = user_message[:30] or "新对话"
+                db.update_session_title(session_id, title)
+                yield {"type": "session_title", "session_id": session_id, "title": title}
+
+            # Get model configuration
+            model = model_config_manager.get_model_config(db.get_config("model", db.get_hermes_default_model()))
+            model_id = model.get('id', 'deepseek-chat') if model else 'deepseek-chat'
+            api_key_env = model.get('api_key_env') if model else None
+            
+            api_key = env_manager.get_api_key(model_id, api_key_env)
+            api_base_url = db.get_config("apiBaseUrl", model.get('api_base_url', '') if model else '')
+
+            # Try using Python API first
+            if HERMES_API_AVAILABLE and api_key:
+                async for chunk in self._chat_via_api(session_id, user_message, model_id, api_key, api_base_url):
+                    # Check if stopped
+                    if session_id not in self._active_tasks:
+                        break
+                    yield chunk
+            else:
+                # Fallback to CLI
+                async for chunk in self._chat_via_cli(session_id, user_message, model_id, api_key, api_base_url):
+                    # Check if stopped
+                    if session_id not in self._active_tasks:
+                        break
+                    yield chunk
+        finally:
+            # Remove from active tasks
+            if session_id in self._active_tasks:
+                del self._active_tasks[session_id]
 
     async def _chat_via_api(
         self, session_id: str, user_message: str, model_id: str, api_key: str, api_base_url: str
