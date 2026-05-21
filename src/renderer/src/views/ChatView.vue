@@ -113,7 +113,7 @@ const currentSession = computed(() => chatStore.getCurrentSession())
 
 const pendingCount = computed(() => {
   if (!currentSession.value) return 0
-  const pending = chatStore.pendingMessages.get(currentSession.value.id)
+  const pending = chatStore.pendingMessages.value.get(currentSession.value.id)
   return pending?.length || 0
 })
 
