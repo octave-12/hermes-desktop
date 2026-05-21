@@ -33,6 +33,9 @@ export const useChatStore = defineStore('chat', () => {
   const isLoading = ref(false)
   const ws = ref<WebSocket | null>(null)
 
+  // Pending messages queue (per session)
+  const pendingMessages = ref<Map<string, string[]>>(new Map())
+
   // Reconnection state
   let backendUrl = ''
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -240,7 +243,10 @@ export const useChatStore = defineStore('chat', () => {
       }
       case 'message_done': {
         const session = sessions.value.find((s) => s.id === data.session_id)
-        if (session) session.isLoading = false
+        if (session) {
+          session.isLoading = false
+          processPendingMessages(session.id)
+        }
         break
       }
       case 'tool_call': {
@@ -294,6 +300,14 @@ export const useChatStore = defineStore('chat', () => {
     const session = getCurrentSession()
     if (!session) return
 
+    // If AI is currently responding, add to pending queue
+    if (session.isLoading) {
+      const queue = pendingMessages.value.get(session.id) || []
+      queue.push(content)
+      pendingMessages.value.set(session.id, queue)
+      return
+    }
+
     const message: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -313,6 +327,22 @@ export const useChatStore = defineStore('chat', () => {
         content
       })
     )
+  }
+
+  // ── Process pending messages ───────────────────────────────
+  function processPendingMessages(sessionId: string) {
+    const queue = pendingMessages.value.get(sessionId)
+    if (!queue || queue.length === 0) return
+
+    const nextMessage = queue.shift()
+    if (queue.length === 0) {
+      pendingMessages.value.delete(sessionId)
+    }
+
+    // Send next message
+    if (nextMessage) {
+      sendMessage(nextMessage)
+    }
   }
 
   function disconnect() {
@@ -336,6 +366,7 @@ export const useChatStore = defineStore('chat', () => {
     isConnected,
     isReconnecting,
     isLoading,
+    pendingMessages,
     createSession,
     deleteSession,
     switchSession,

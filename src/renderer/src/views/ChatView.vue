@@ -58,6 +58,14 @@
       </div>
     </div>
 
+    <!-- Pending messages queue -->
+    <div v-if="pendingCount > 0" class="pending-queue">
+      <div class="pending-header">
+        <span class="pending-icon">⏳</span>
+        <span>待执行消息: {{ pendingCount }} 条</span>
+      </div>
+    </div>
+
     <!-- Input area -->
     <div class="input-area" :style="{ height: inputAreaHeight + 'px' }">
       <div class="resize-handle" @mousedown="startResize"></div>
@@ -91,6 +99,12 @@ const inputAreaHeight = ref(80)
 const isResizing = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
+
+const pendingCount = computed(() => {
+  if (!currentSession.value) return 0
+  const pending = chatStore.pendingMessages.get(currentSession.value.id)
+  return pending?.length || 0
+})
 
 function renderMarkdown(content: string): string {
   if (!content) return ''
@@ -335,6 +349,25 @@ onMounted(async () => {
 @keyframes bounce {
   0%, 80%, 100% { transform: scale(0.6); }
   40% { transform: scale(1); }
+}
+
+/* ── Pending queue ── */
+.pending-queue {
+  padding: 8px 16px;
+  background: #f9e2af22;
+  border-top: 1px solid #f9e2af;
+}
+
+.pending-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f9e2af;
+  font-size: 0.85rem;
+}
+
+.pending-icon {
+  font-size: 1rem;
 }
 
 /* ── Input area ── */
