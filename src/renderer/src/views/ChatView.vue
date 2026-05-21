@@ -99,8 +99,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
+
+declare global {
+  interface Window {
+    api: {
+      getBackendUrl: () => Promise<string>
+    }
+  }
+}
 
 const chatStore = useChatStore()
 const inputText = ref('')
@@ -113,7 +121,7 @@ const currentSession = computed(() => chatStore.getCurrentSession())
 
 const pendingCount = computed(() => {
   if (!currentSession.value) return 0
-  const pending = chatStore.pendingMessages.value.get(currentSession.value.id)
+  const pending = chatStore.pendingMessages.get(currentSession.value.id)
   return pending?.length || 0
 })
 
