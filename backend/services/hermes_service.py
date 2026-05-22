@@ -37,7 +37,6 @@ class HermesService:
         venv_bin = os.path.join(HERMES_VENV_DIR, "bin")
         self._env["PATH"] = venv_bin + ":" + self._env.get("PATH", "")
         self._env["VIRTUAL_ENV"] = HERMES_VENV_DIR
-        self._agent_cache = {}
         self._active_tasks = {}
 
     def stop_generation(self, session_id: str):
@@ -51,14 +50,9 @@ class HermesService:
         return session_id in self._active_tasks
 
     def _get_agent(self, model_id: str, api_key: str, api_base_url: str, session_id: str = None) -> Optional['AIAgent']:
-        """Get or create AIAgent instance for a model."""
+        """Create AIAgent instance for a model (no caching to avoid state pollution)."""
         if not HERMES_API_AVAILABLE:
             return None
-        
-        # Cache key includes session_id for proper isolation
-        cache_key = f"{model_id}:{api_base_url}:{session_id or 'default'}"
-        if cache_key in self._agent_cache:
-            return self._agent_cache[cache_key]
         
         try:
             agent = AIAgent(
@@ -67,7 +61,6 @@ class HermesService:
                 base_url=api_base_url,
                 session_id=session_id,
             )
-            self._agent_cache[cache_key] = agent
             return agent
         except Exception as e:
             print(f"[ERROR] Failed to create AIAgent: {e}")
