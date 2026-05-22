@@ -426,7 +426,7 @@ onUnmounted(() => {
   color: #cdd6f4;
   margin: 0;
   font-weight: 600;
-  margin-left: -13px;
+  margin-left: -8px;
 }
 
 .session-list {
