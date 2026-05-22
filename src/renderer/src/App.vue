@@ -32,7 +32,6 @@
               type="text" 
               placeholder="搜索会话..." 
               class="search-input"
-              @input="filterSessions"
             />
             <button class="search-close-btn" @click="showSearch = false; searchQuery = ''" title="关闭">
               ×
@@ -153,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import SettingsModal from '@/components/SettingsModal.vue'
 import { fetchWithAuth, getWsUrl } from '@/utils/api'
@@ -164,19 +163,18 @@ const currentModelName = ref('')
 const sidebarCollapsed = ref(false)
 const showSearch = ref(false)
 const searchQuery = ref('')
-const filteredSessions = ref(chatStore.sessions)
 
-function filterSessions() {
+const filteredSessions = computed(() => {
   if (!searchQuery.value.trim()) {
-    filteredSessions.value = chatStore.sessions
+    return chatStore.sessions
   } else {
     const query = searchQuery.value.toLowerCase()
-    filteredSessions.value = chatStore.sessions.filter(s => 
+    return chatStore.sessions.filter(s => 
       s.title.toLowerCase().includes(query) ||
       (s.lastAiMessage && s.lastAiMessage.toLowerCase().includes(query))
     )
   }
-}
+})
 
 // Reconnect WebSocket
 function reconnect() {
