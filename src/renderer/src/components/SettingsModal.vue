@@ -205,19 +205,17 @@
         <div class="modal-body">
           <div class="setting-group">
             <label class="setting-label">模型 ID *</label>
-            <input v-model="newModel.id" class="setting-input" placeholder="例如: my-custom-model" />
-          </div>
-          <div class="setting-group">
-            <label class="setting-label">显示名称 *</label>
-            <input v-model="newModel.name" class="setting-input" placeholder="例如: My Custom Model" />
+            <input v-model="newModel.id" class="setting-input" placeholder="例如: gpt-4o, deepseek-chat" />
           </div>
           <div class="setting-group">
             <label class="setting-label">提供商</label>
-            <input v-model="newModel.provider" class="setting-input" placeholder="例如: openai" />
-          </div>
-          <div class="setting-group">
-            <label class="setting-label">API Base URL *</label>
-            <input v-model="newModel.api_base_url" class="setting-input" placeholder="https://api.example.com/v1" />
+            <select v-model="newModel.provider" class="setting-input">
+              <option value="custom">自定义</option>
+              <option value="openai">OpenAI</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
           </div>
           <div class="setting-group">
             <label class="setting-label">API Key *</label>
@@ -278,9 +276,7 @@ const showAdvanced = ref(false)
 const addingModel = ref(false)
 const newModel = ref({
   id: '',
-  name: '',
-  provider: '',
-  api_base_url: '',
+  provider: 'custom',
   apiKey: ''
 })
 
@@ -427,12 +423,12 @@ function openAddModel() {
 
 function closeAddModel() {
   showAddModel.value = false
-  newModel.value = { id: '', name: '', provider: '', api_base_url: '', apiKey: '' }
+  newModel.value = { id: '', provider: 'custom', apiKey: '' }
 }
 
 async function addCustomModel() {
-  if (!newModel.value.id || !newModel.value.api_base_url) {
-    alert('请填写模型 ID 和 API URL')
+  if (!newModel.value.id) {
+    alert('请填写模型 ID')
     return
   }
   
@@ -445,10 +441,10 @@ async function addCustomModel() {
   try {
     const model: ModelProfile = {
       id: newModel.value.id,
-      name: newModel.value.name || newModel.value.id,
-      provider: newModel.value.provider || 'custom',
-      api_base_url: newModel.value.api_base_url,
-      api_key_env: `${newModel.value.id.toUpperCase()}_API_KEY`,
+      name: newModel.value.id,
+      provider: newModel.value.provider,
+      api_base_url: '',
+      api_key_env: `${newModel.value.id.toUpperCase().replace(/-/g, '_')}_API_KEY`,
       temperature: 0.7,
       max_tokens: 2048,
       configured: false
