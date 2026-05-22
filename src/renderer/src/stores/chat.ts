@@ -70,6 +70,8 @@ export const useChatStore = defineStore('chat', () => {
     const idx = sessions.value.findIndex((s) => s.id === id)
     if (idx === -1) return
     sessions.value.splice(idx, 1)
+    // Clean up pending messages for deleted session
+    pendingMessages.value.delete(id)
     if (currentSessionId.value === id) {
       currentSessionId.value = sessions.value.length > 0 ? sessions.value[0].id : null
     }
