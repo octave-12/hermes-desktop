@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import Request, HTTPException
 
 _auth_token: Optional[str] = None
+_auth_enabled: bool = False  # Disabled by default for Electron desktop app
 
 
 def init_auth_token() -> str:
@@ -10,6 +11,12 @@ def init_auth_token() -> str:
     global _auth_token
     _auth_token = secrets.token_urlsafe(32)
     return _auth_token
+
+
+def enable_auth(enabled: bool = True):
+    """Enable or disable authentication."""
+    global _auth_enabled
+    _auth_enabled = enabled
 
 
 def get_auth_token() -> Optional[str]:
@@ -25,7 +32,11 @@ def verify_token(token: str) -> bool:
 
 
 async def auth_middleware(request: Request, call_next):
-    """Middleware to verify authentication token."""
+    """Middleware to verify authentication token (optional for Electron app)."""
+    # Skip auth if disabled (default for Electron desktop app)
+    if not _auth_enabled:
+        return await call_next(request)
+    
     # Whitelist: health check, root, auth token endpoint, and WebSocket
     if request.url.path in ["/health", "/", "/api/auth/token"]:
         return await call_next(request)

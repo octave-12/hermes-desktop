@@ -226,6 +226,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
+import { fetchWithAuth } from '@/utils/api'
 import { useSettingsStore, type ModelProfile } from '@/stores/settings'
 import MemoryManager from './MemoryManager.vue'
 
@@ -293,7 +294,7 @@ async function loadAllData() {
 
 async function loadCurrentConfig() {
   try {
-    const response = await fetch('http://localhost:8765/api/config')
+    const response = await fetchWithAuth('/api/config')
     if (response.ok) {
       const data = await response.json()
       localConfig.value = {
@@ -312,7 +313,7 @@ async function loadCurrentConfig() {
 
 async function loadModels() {
   try {
-    const response = await fetch('http://localhost:8765/api/models')
+    const response = await fetchWithAuth('/api/models')
     if (response.ok) {
       const data = await response.json()
       availableModels.value = data.models || []

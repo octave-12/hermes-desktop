@@ -42,8 +42,10 @@ export async function initAuth(): Promise<void> {
     const data = await response.json()
     if (data.token) {
       authToken = data.token
+      console.log('[API] Auth token initialized')
     }
   } catch (error) {
-    console.error('[API] Failed to get auth token:', error)
+    // Auth is optional for Electron desktop app
+    console.log('[API] Auth not available, continuing without auth')
   }
 }
