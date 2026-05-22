@@ -120,21 +120,22 @@
                   <span class="db-entry-importance">⭐{{ entry.importance }}</span>
                 </div>
                 <div class="db-entry-actions">
-                  <button class="btn btn-sm" @click="editDbEntry(entry)">✏️</button>
-                  <button class="btn btn-sm btn-danger" @click="deleteDbEntry(entry.id)">🗑️</button>
+                  <button 
+                    v-if="entry.content.length > 100" 
+                    class="btn btn-sm btn-expand"
+                    @click="toggleEntryExpand(entry.id)"
+                    :title="expandedEntries.has(entry.id) ? '收起' : '展开'"
+                  >
+                    {{ expandedEntries.has(entry.id) ? '▲' : '▼' }}
+                  </button>
+                  <button class="btn btn-sm" @click="editDbEntry(entry)" title="编辑">✏️</button>
+                  <button class="btn btn-sm btn-danger" @click="deleteDbEntry(entry.id)" title="删除">🗑️</button>
                 </div>
               </div>
               <div class="db-entry-content-wrapper">
                 <pre class="db-entry-content" :class="{ collapsed: !expandedEntries.has(entry.id) }">{{ 
                   expandedEntries.has(entry.id) ? entry.content : truncateContent(entry.content, 100) 
                 }}</pre>
-                <button 
-                  v-if="entry.content.length > 100" 
-                  class="expand-btn"
-                  @click="toggleEntryExpand(entry.id)"
-                >
-                  {{ expandedEntries.has(entry.id) ? '−' : '+' }}
-                </button>
               </div>
               <div v-if="entry.tags?.length" class="db-entry-tags">
                 <span v-for="tag in entry.tags" :key="tag" class="tag">{{ tag }}</span>
@@ -953,27 +954,12 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.expand-btn {
-  position: absolute;
-  bottom: 4px;
-  right: 8px;
-  background: #45475a;
-  border: 1px solid #6c7086;
-  color: #cdd6f4;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: bold;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.btn-expand {
+  color: #89b4fa;
 }
 
-.expand-btn:hover {
-  background: #6c7086;
+.btn-expand:hover {
+  color: #b4befe;
 }
 
 .db-entry-tags {
