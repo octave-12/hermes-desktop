@@ -59,7 +59,7 @@
     <div v-if="showContentModal" class="modal-overlay" @click.self="closeContentModal">
       <div class="modal-content memory-content-modal">
         <div class="modal-header">
-          <h2>{{ getMemoryIcon(selectedMemory?.id) }} {{ selectedMemory?.name }}</h2>
+          <h2>{{ getMemoryIcon(selectedMemory?.id || '') }} {{ selectedMemory?.name }}</h2>
           <button class="close-btn" @click="closeContentModal">×</button>
         </div>
         <div class="modal-body">
