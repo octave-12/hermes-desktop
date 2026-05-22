@@ -341,7 +341,8 @@ onUnmounted(() => {
 .header-actions {
   display: flex;
   gap: 6px;
-  margin-right: -8px;
+  position: relative;
+  right: -8px;
 }
 
 .new-chat-icon-btn,
@@ -368,7 +369,7 @@ onUnmounted(() => {
 }
 
 .search-box {
-  margin: 12px 0;
+  margin: 16px 0;
 }
 
 .search-input-wrapper {
