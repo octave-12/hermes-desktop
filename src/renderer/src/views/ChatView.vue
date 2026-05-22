@@ -16,7 +16,7 @@
       <RecycleScroller
         class="scroller"
         :items="currentSession.messages"
-        :item-size="null"
+        :min-item-size="80"
         key-field="id"
         :buffer="200"
         v-slot="{ item: msg }"
