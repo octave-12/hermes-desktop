@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { fetchWithAuth } from '@/utils/api'
 
 export interface ModelProfile {
   id: string
@@ -31,7 +32,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function loadConfig(): Promise<ModelConfig | null> {
     try {
-      const response = await fetch('http://localhost:8765/api/config')
+      const response = await fetchWithAuth('/api/config')
       if (response.ok) {
         const data = await response.json()
         config.value = { ...config.value, ...data }
@@ -45,11 +46,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function saveConfig(newConfig: ModelConfig): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8765/api/config', {
+      const response = await fetchWithAuth('/api/config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify(newConfig)
       })
       
@@ -69,7 +67,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function loadModels(): Promise<ModelProfile[]> {
     try {
-      const response = await fetch('http://localhost:8765/api/models')
+      const response = await fetchWithAuth('/api/models')
       if (response.ok) {
         const data = await response.json()
         availableModels.value = data.models || []
@@ -83,9 +81,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function switchModel(modelId: string): Promise<{ success: boolean; needsApiKey?: boolean; apiBaseUrl?: string }> {
     try {
-      const response = await fetch('http://localhost:8765/api/model/switch', {
+      const response = await fetchWithAuth('/api/model/switch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: modelId })
       })
       
@@ -108,9 +105,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setApiKey(modelId: string, apiKey: string): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:8765/api/env/set', {
+      const response = await fetchWithAuth('/api/env/set', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: modelId, apiKey })
       })
       
@@ -123,7 +119,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function checkApiKey(modelId: string): Promise<{ hasKey: boolean; maskedKey: string }> {
     try {
-      const response = await fetch(`http://localhost:8765/api/env/check/${modelId}`)
+      const response = await fetchWithAuth(`/api/env/check/${modelId}`)
       if (response.ok) {
         const data = await response.json()
         return { hasKey: data.hasApiKey, maskedKey: data.apiKey }

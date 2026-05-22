@@ -15,11 +15,14 @@ from services.hermes_service import HermesService
 from services.model_config import model_config_manager
 from services.env_manager import env_manager
 from services.memory_manager import memory_manager
+from services.auth import init_auth_token, get_auth_token, auth_middleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    token = init_auth_token()
+    print(f"[AUTH] Authentication token initialized: {token[:8]}...")
     print("[DB] Database initialized")
     yield
 
@@ -28,11 +31,17 @@ app = FastAPI(title="Hermes Desktop Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8765",
+        "http://127.0.0.1:8765",
+        "file://",
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(auth_middleware)
 
 hermes_service = HermesService()
 
@@ -40,6 +49,15 @@ hermes_service = HermesService()
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "hermes-desktop-backend"}
+
+
+@app.get("/api/auth/token")
+async def get_auth_token_endpoint():
+    """Get authentication token for current session."""
+    token = get_auth_token()
+    if not token:
+        return {"error": "Token not initialized"}
+    return {"token": token}
 
 
 @app.get("/api/config")
