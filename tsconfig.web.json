@@ -8,6 +8,7 @@
   "compilerOptions": {
     "composite": true,
     "baseUrl": ".",
+    "module": "esnext",
     "paths": {
       "@/*": ["src/renderer/src/*"]
     }
