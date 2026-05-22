@@ -528,8 +528,8 @@ onMounted(async () => {
 .modal-content {
   background: #1e1e2e;
   border-radius: 12px;
-  width: 90%;
-  max-width: 600px;
+  width: 900px;
+  max-width: 90%;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
