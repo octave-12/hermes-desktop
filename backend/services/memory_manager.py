@@ -150,12 +150,12 @@ class MemoryManager:
             
             if category:
                 cursor.execute(
-                    "SELECT * FROM memories WHERE category = ? ORDER BY importance DESC, created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT * FROM memories WHERE category = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
                     (category, limit, offset)
                 )
             else:
                 cursor.execute(
-                    "SELECT * FROM memories ORDER BY importance DESC, created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT * FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?",
                     (limit, offset)
                 )
             
