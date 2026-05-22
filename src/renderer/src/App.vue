@@ -342,6 +342,7 @@ onUnmounted(() => {
   height: 28px;
   margin-right: 8px;
   margin-left: -5px;
+  margin-top: 2px;
 }
 
 .header-actions {
@@ -425,7 +426,7 @@ onUnmounted(() => {
   color: #cdd6f4;
   margin: 0;
   font-weight: 600;
-  margin-left: -8px;
+  margin-left: -13px;
 }
 
 .session-list {
