@@ -26,7 +26,8 @@ def verify_token(token: str) -> bool:
 
 async def auth_middleware(request: Request, call_next):
     """Middleware to verify authentication token."""
-    if request.url.path in ["/health", "/"]:
+    # Whitelist: health check, root, auth token endpoint, and WebSocket
+    if request.url.path in ["/health", "/", "/api/auth/token"]:
         return await call_next(request)
     
     if request.url.path.startswith("/ws"):

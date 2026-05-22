@@ -156,6 +156,7 @@
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import SettingsModal from '@/components/SettingsModal.vue'
+import { fetchWithAuth, getWsUrl } from '@/utils/api'
 
 const chatStore = useChatStore()
 const showSettings = ref(false)
@@ -183,7 +184,7 @@ function reconnect() {
     chatStore.disconnect()
     chatStore.isReconnecting = true
     setTimeout(() => {
-      chatStore.connectWebSocket('ws://localhost:8765/ws')
+      chatStore.connectWebSocket(getWsUrl())
     }, 500)
   }
 }
@@ -192,7 +193,7 @@ function reconnect() {
 async function refreshModelName() {
   try {
     // Get model list
-    const modelsResponse = await fetch('http://localhost:8765/api/models')
+    const modelsResponse = await fetchWithAuth('/api/models')
     if (!modelsResponse.ok) {
       currentModelName.value = 'Unknown'
       return
@@ -202,7 +203,7 @@ async function refreshModelName() {
     const models = modelsData.models || []
     
     // Get current model config
-    const configResponse = await fetch('http://localhost:8765/api/config')
+    const configResponse = await fetchWithAuth('/api/config')
     if (!configResponse.ok) {
       currentModelName.value = 'Unknown'
       return
