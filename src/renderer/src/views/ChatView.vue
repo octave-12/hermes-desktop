@@ -255,6 +255,8 @@ onMounted(async () => {
   align-items: flex-start;
   gap: 10px;
   margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .message-row.user {
@@ -296,6 +298,8 @@ onMounted(async () => {
   line-height: 1.6;
   font-size: 0.9rem;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  flex-shrink: 0;
 }
 
 .ai-bubble {
