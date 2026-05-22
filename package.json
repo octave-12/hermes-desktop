@@ -17,18 +17,19 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "vue": "^3.5.13",
     "pinia": "^2.2.6",
-    "vue-router": "^4.4.5"
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5",
+    "vue-virtual-scroller": "^2.0.0-beta.8"
   },
   "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/node": "^22.10.5",
     "@vitejs/plugin-vue": "^5.2.1",
     "electron": "^33.2.1",
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vue-tsc": "^2.1.10",
-    "@electron-toolkit/tsconfig": "^1.0.1",
-    "@types/node": "^22.10.5"
+    "vue-tsc": "^2.1.10"
   }
 }

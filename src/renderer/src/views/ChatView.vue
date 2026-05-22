@@ -13,42 +13,47 @@
 
     <!-- Messages -->
     <div v-else class="messages-container" ref="messagesContainer">
-      <div
-        v-for="msg in currentSession.messages"
-        :key="msg.id"
-        class="message-row"
-        :class="msg.role"
+      <RecycleScroller
+        class="scroller"
+        :items="currentSession.messages"
+        :item-size="120"
+        key-field="id"
+        :buffer="200"
       >
-        <!-- AI message: avatar left, bubble left -->
-        <template v-if="msg.role === 'assistant'">
-          <div class="avatar ai-avatar">H</div>
-          <div class="bubble ai-bubble">
-            <div class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
-            <div v-if="msg.toolCalls?.length" class="tool-calls">
-              <div v-for="(tc, idx) in msg.toolCalls" :key="idx" class="tool-call">
-                <div class="tool-header">
-                  <span class="tool-name">{{ tc.name }}</span>
-                  <span class="tool-status" :class="tc.status">{{ tc.status }}</span>
+        <template #default="{ item: msg }">
+          <div class="message-row" :class="msg.role">
+            <!-- AI message: avatar left, bubble left -->
+            <template v-if="msg.role === 'assistant'">
+              <div class="avatar ai-avatar">H</div>
+              <div class="bubble ai-bubble">
+                <div class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
+                <div v-if="msg.toolCalls?.length" class="tool-calls">
+                  <div v-for="(tc, idx) in msg.toolCalls" :key="idx" class="tool-call">
+                    <div class="tool-header">
+                      <span class="tool-name">{{ tc.name }}</span>
+                      <span class="tool-status" :class="tc.status">{{ tc.status }}</span>
+                    </div>
+                    <pre v-if="tc.result" class="tool-result">{{ tc.result }}</pre>
+                  </div>
                 </div>
-                <pre v-if="tc.result" class="tool-result">{{ tc.result }}</pre>
               </div>
-            </div>
+            </template>
+
+            <!-- User message: bubble right -->
+            <template v-else-if="msg.role === 'user'">
+              <div class="bubble user-bubble">
+                <div class="bubble-content">{{ msg.content }}</div>
+              </div>
+              <div class="avatar user-avatar">Me</div>
+            </template>
+
+            <!-- System message: centered -->
+            <template v-else>
+              <div class="system-msg">{{ msg.content }}</div>
+            </template>
           </div>
         </template>
-
-        <!-- User message: bubble right -->
-        <template v-else-if="msg.role === 'user'">
-          <div class="bubble user-bubble">
-            <div class="bubble-content">{{ msg.content }}</div>
-          </div>
-          <div class="avatar user-avatar">Me</div>
-        </template>
-
-        <!-- System message: centered -->
-        <template v-else>
-          <div class="system-msg">{{ msg.content }}</div>
-        </template>
-      </div>
+      </RecycleScroller>
 
       <!-- Loading indicator -->
       <div v-if="currentSession?.isLoading" class="message-row assistant">
@@ -103,6 +108,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import { RecycleScroller } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 
 declare global {
   interface Window {
@@ -236,6 +243,10 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px 16px;
+}
+
+.scroller {
+  height: 100%;
 }
 
 /* ── Message rows ── */
