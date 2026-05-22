@@ -66,32 +66,36 @@
       </div>
       <div class="sidebar-footer">
         <div class="footer-row">
-          <div class="connection-status" :class="{ connected: chatStore.isConnected, reconnecting: chatStore.isReconnecting }">
-            <span class="status-dot"></span>
-            <span class="status-text">
-              {{ chatStore.isConnected ? '已连接' : (chatStore.isReconnecting ? '重连中...' : '未连接') }}
-            </span>
+          <div class="status-group">
+            <div class="connection-status" :class="{ connected: chatStore.isConnected, reconnecting: chatStore.isReconnecting }">
+              <span class="status-dot"></span>
+              <span class="status-text">
+                {{ chatStore.isConnected ? '在线' : (chatStore.isReconnecting ? '重连' : '离线') }}
+              </span>
+            </div>
+            <button 
+              v-if="!chatStore.isConnected" 
+              class="refresh-btn" 
+              @click="reconnect" 
+              :disabled="chatStore.isReconnecting"
+              :class="{ rotating: chatStore.isReconnecting }"
+              title="重新连接"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
           </div>
-          <button 
-            v-if="!chatStore.isConnected" 
-            class="refresh-btn" 
-            @click="reconnect" 
-            :disabled="chatStore.isReconnecting"
-            :class="{ rotating: chatStore.isReconnecting }"
-            title="重新连接"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-          </button>
-          <div class="model-info" v-if="currentModelName">
-            <span class="model-label">🤖</span>
+          <div class="footer-divider"></div>
+          <div class="model-info" v-if="currentModelName" title="当前模型">
+            <span class="model-icon">🤖</span>
             <span class="model-name">{{ currentModelName }}</span>
           </div>
+          <div class="footer-divider"></div>
           <button class="settings-btn" @click="showSettings = true" title="设置">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
@@ -422,39 +426,64 @@ onUnmounted(() => {
 }
 
 .sidebar-footer {
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-top: 1px solid #313244;
+  background: #1e1e2e;
 }
 
 .footer-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 0;
+  border-radius: 8px;
+  background: #313244;
+  padding: 6px 8px;
+}
+
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 16px;
+  background: #45475a;
+  margin: 0 8px;
 }
 
 .connection-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
+  gap: 6px;
+  font-size: 0.75rem;
   color: #a6adc8;
   flex-shrink: 0;
-  transition: opacity 0.2s;
+  transition: all 0.2s;
+}
+
+.connection-status.connected {
+  color: #a6e3a1;
+}
+
+.connection-status.reconnecting {
+  color: #f9e2af;
 }
 
 .model-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 0.75rem;
-  color: #6c7086;
+  color: #cdd6f4;
   flex: 1;
   min-width: 0;
+  cursor: default;
 }
 
-.model-label {
-  font-size: 0.9rem;
+.model-icon {
+  font-size: 0.85rem;
 }
 
 .model-name {
@@ -466,18 +495,21 @@ onUnmounted(() => {
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #f38ba8;
+  box-shadow: 0 0 6px rgba(243, 139, 168, 0.5);
 }
 
 .connection-status.connected .status-dot {
   background: #a6e3a1;
+  box-shadow: 0 0 6px rgba(166, 227, 161, 0.5);
 }
 
 .connection-status.reconnecting .status-dot {
   background: #f9e2af;
+  box-shadow: 0 0 6px rgba(249, 226, 175, 0.5);
   animation: pulse 1s infinite;
 }
 
@@ -523,10 +555,10 @@ onUnmounted(() => {
 .settings-btn {
   background: transparent;
   border: none;
-  color: #6c7086;
+  color: #89b4fa;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
+  padding: 4px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -536,8 +568,9 @@ onUnmounted(() => {
 }
 
 .settings-btn:hover {
-  background: #313244;
-  color: #cdd6f4;
+  background: rgba(137, 180, 250, 0.1);
+  color: #b4befe;
+  transform: rotate(45deg);
 }
 
 .main-content {
