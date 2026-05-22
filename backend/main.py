@@ -28,9 +28,9 @@ app = FastAPI(title="Hermes Desktop Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -390,7 +390,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif msg_type == "stop_generation":
                 session_id = message["session_id"]
-                hermes_service.stop_generation(session_id)
+                await hermes_service.stop_generation(session_id)
                 await websocket.send_text(json.dumps({
                     "type": "generation_stopped",
                     "session_id": session_id,

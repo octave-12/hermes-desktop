@@ -38,16 +38,19 @@ class HermesService:
         self._env["PATH"] = venv_bin + ":" + self._env.get("PATH", "")
         self._env["VIRTUAL_ENV"] = HERMES_VENV_DIR
         self._active_tasks = {}
+        self._tasks_lock = asyncio.Lock()
 
-    def stop_generation(self, session_id: str):
+    async def stop_generation(self, session_id: str):
         """Stop active generation for a session."""
-        if session_id in self._active_tasks:
-            del self._active_tasks[session_id]
-            print(f"[INFO] Generation stopped for session {session_id}")
+        async with self._tasks_lock:
+            if session_id in self._active_tasks:
+                del self._active_tasks[session_id]
+                print(f"[INFO] Generation stopped for session {session_id}")
 
-    def is_generation_active(self, session_id: str) -> bool:
+    async def is_generation_active(self, session_id: str) -> bool:
         """Check if generation is active for a session."""
-        return session_id in self._active_tasks
+        async with self._tasks_lock:
+            return session_id in self._active_tasks
 
     def _get_agent(self, model_id: str, api_key: str, api_base_url: str, session_id: str = None) -> Optional['AIAgent']:
         """Create AIAgent instance for a model (no caching to avoid state pollution)."""
@@ -73,7 +76,8 @@ class HermesService:
         Send message to Hermes Agent and stream back the response.
         """
         # Mark as active
-        self._active_tasks[session_id] = True
+        async with self._tasks_lock:
+            self._active_tasks[session_id] = True
         
         try:
             # Persist user message
@@ -99,20 +103,23 @@ class HermesService:
             if HERMES_API_AVAILABLE and api_key:
                 async for chunk in self._chat_via_api(session_id, user_message, model_id, api_key, api_base_url):
                     # Check if stopped
-                    if session_id not in self._active_tasks:
-                        break
+                    async with self._tasks_lock:
+                        if session_id not in self._active_tasks:
+                            break
                     yield chunk
             else:
                 # Fallback to CLI
                 async for chunk in self._chat_via_cli(session_id, user_message, model_id, api_key, api_base_url):
                     # Check if stopped
-                    if session_id not in self._active_tasks:
-                        break
+                    async with self._tasks_lock:
+                        if session_id not in self._active_tasks:
+                            break
                     yield chunk
         finally:
             # Remove from active tasks
-            if session_id in self._active_tasks:
-                del self._active_tasks[session_id]
+            async with self._tasks_lock:
+                if session_id in self._active_tasks:
+                    del self._active_tasks[session_id]
 
     async def _chat_via_api(
         self, session_id: str, user_message: str, model_id: str, api_key: str, api_base_url: str

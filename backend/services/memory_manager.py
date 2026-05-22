@@ -92,7 +92,10 @@ class MemoryManager:
                 info += "## 表结构\n\n"
                 
                 for (table_name,) in tables:
-                    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                    # Whitelist validate table name (alphanumeric and underscore only)
+                    if not table_name.replace('_', '').isalnum():
+                        continue
+                    cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
                     count = cursor.fetchone()[0]
                     info += f"- **{table_name}**: {count} 条记录\n"
                 
@@ -200,7 +203,10 @@ class MemoryManager:
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = cursor.fetchall()
                 for (table_name,) in tables:
-                    cursor.execute(f"DELETE FROM {table_name}")
+                    # Whitelist validate table name
+                    if not table_name.replace('_', '').isalnum():
+                        continue
+                    cursor.execute(f"DELETE FROM [{table_name}]")
                 conn.commit()
                 conn.close()
                 return True
