@@ -5,14 +5,20 @@
         <div class="header-row">
           <h1 class="app-title">Hermes</h1>
           <div class="header-actions">
+            <button class="new-chat-icon-btn" @click="createNewSession" title="新对话">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
             <button class="search-toggle-btn" @click="showSearch = !showSearch" title="搜索会话">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </button>
             <button class="collapse-btn" @click="sidebarCollapsed = true" title="收起侧边栏">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="15 18 9 12 15 6"></polyline>
               </svg>
             </button>
@@ -32,7 +38,6 @@
             </button>
           </div>
         </div>
-        <button class="new-chat-btn" @click="createNewSession">+ 新对话</button>
       </div>
       <div class="session-list">
         <div
@@ -335,20 +340,23 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+.new-chat-icon-btn,
 .search-toggle-btn,
 .collapse-btn {
   background: transparent;
   border: none;
   color: #6c7086;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
 }
 
+.new-chat-icon-btn:hover,
 .search-toggle-btn:hover,
 .collapse-btn:hover {
   background: #45475a;
@@ -406,22 +414,6 @@ onUnmounted(() => {
   color: #cdd6f4;
   margin: 0 0 12px 0;
   font-weight: 600;
-}
-
-.new-chat-btn {
-  width: 100%;
-  padding: 10px;
-  background: #45475a;
-  color: #cdd6f4;
-  border: 1px solid #585b70;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.new-chat-btn:hover {
-  background: #585b70;
 }
 
 .session-list {
