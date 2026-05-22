@@ -92,10 +92,9 @@ class HermesService:
             # Persist user message
             db.add_message(user_msg_id, session_id, "user", user_message)
 
-            # Update session title from first user message
-            messages = db.get_session_messages(session_id)
-            user_messages = [m for m in messages if m["role"] == "user"]
-            if len(user_messages) == 1:
+            # Update session title from first user message (optimized query)
+            user_msg_count = db.get_user_message_count(session_id)
+            if user_msg_count == 1:
                 title = user_message[:30] or "新对话"
                 db.update_session_title(session_id, title)
                 yield {"type": "session_title", "session_id": session_id, "title": title}

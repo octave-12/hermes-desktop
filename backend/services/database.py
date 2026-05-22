@@ -152,6 +152,16 @@ def get_session_messages(session_id: str) -> list[dict]:
     return messages
 
 
+def get_user_message_count(session_id: str) -> int:
+    """Get count of user messages for a session (optimized for title update check)."""
+    with get_connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'user'",
+            (session_id,),
+        ).fetchone()[0]
+    return count
+
+
 # ── Hermes session tracking ───────────────────────────────────
 
 def get_hermes_session_id(session_id: str) -> Optional[str]:

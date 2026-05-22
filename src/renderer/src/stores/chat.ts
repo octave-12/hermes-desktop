@@ -156,6 +156,9 @@ export const useChatStore = defineStore('chat', () => {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
+    
+    // Stop heartbeat before creating new connection
+    stopHeartbeat()
 
     if (ws.value) {
       ws.value.onclose = null
@@ -426,6 +429,8 @@ export const useChatStore = defineStore('chat', () => {
       ws.value = null
     }
     isConnected.value = false
+    // Clean up all pending messages
+    pendingMessages.value.clear()
   }
 
   return {
