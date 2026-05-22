@@ -16,11 +16,11 @@
       <RecycleScroller
         class="scroller"
         :items="currentSession.messages"
-        :item-size="120"
+        :item-size="null"
         key-field="id"
         :buffer="200"
+        v-slot="{ item: msg }"
       >
-        <template #default="{ item: msg }">
           <div class="message-row" :class="msg.role">
             <!-- AI message: avatar left, bubble left -->
             <template v-if="msg.role === 'assistant'">
@@ -52,7 +52,6 @@
               <div class="system-msg">{{ msg.content }}</div>
             </template>
           </div>
-        </template>
       </RecycleScroller>
 
       <!-- Loading indicator -->
