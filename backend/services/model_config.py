@@ -62,8 +62,8 @@ class ModelConfigManager:
         models = {}
         config = self.read_hermes_config()
         
-        # Load from models field
-        if 'models' in config:
+        # Load from models field (old format)
+        if 'models' in config and config['models']:
             for model_id, model_config in config['models'].items():
                 models[model_id] = {
                     'id': model_id,
@@ -81,6 +81,34 @@ class ModelConfigManager:
         
         # If current model is set but not in models list, add it
         if current_model and current_model not in models:
+            models[current_model] = {
+                'id': current_model,
+                'name': current_model,
+                'provider': current_provider or 'custom',
+                'api_base_url': '',
+                'api_key_env': f"{current_model.upper().replace('-', '_')}_API_KEY",
+                'temperature': 0.7,
+                'max_tokens': 2048,
+            }
+        
+        # If no models found, check providers field (new v0.14.0 format)
+        if not models and 'providers' in config:
+            providers = config['providers']
+            if providers and isinstance(providers, dict):
+                for provider_name, provider_config in providers.items():
+                    model_id = provider_config.get('model', provider_name)
+                    models[model_id] = {
+                        'id': model_id,
+                        'name': provider_config.get('name', model_id),
+                        'provider': provider_name,
+                        'api_base_url': provider_config.get('api_base_url', ''),
+                        'api_key_env': provider_config.get('api_key_env', f"{model_id.upper().replace('-', '_')}_API_KEY"),
+                        'temperature': provider_config.get('temperature', 0.7),
+                        'max_tokens': provider_config.get('max_tokens', 2048),
+                    }
+        
+        # If still no models, create default from current model
+        if not models and current_model:
             models[current_model] = {
                 'id': current_model,
                 'name': current_model,

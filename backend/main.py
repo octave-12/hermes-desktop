@@ -293,45 +293,7 @@ async def get_memories():
     return {"memories": memory_manager.get_memory_types()}
 
 
-@app.get("/api/memories/{memory_id}")
-async def get_memory(memory_id: str):
-    """Get content of a memory"""
-    content = memory_manager.get_memory_content(memory_id)
-    if content is None:
-        return {"error": "Memory not found"}
-    return {"id": memory_id, "content": content}
-
-
-@app.get("/api/memories/{memory_id}/entries")
-async def get_memory_entries(memory_id: str):
-    """Get memory entries (split by § separator)"""
-    entries = memory_manager.get_memory_entries(memory_id)
-    return {"id": memory_id, "entries": entries}
-
-
-@app.delete("/api/memories/{memory_id}/entries/{entry_index}")
-async def delete_memory_entry(memory_id: str, entry_index: int):
-    """Delete a single memory entry"""
-    success = memory_manager.delete_memory_entry(memory_id, entry_index)
-    return {"status": "ok" if success else "error"}
-
-
-@app.put("/api/memories/{memory_id}")
-async def update_memory(memory_id: str, request: dict):
-    """Update memory content"""
-    content = request.get("content", "")
-    success = memory_manager.update_memory_content(memory_id, content)
-    return {"status": "ok" if success else "error"}
-
-
-@app.delete("/api/memories/{memory_id}")
-async def delete_memory(memory_id: str):
-    """Delete a memory"""
-    success = memory_manager.delete_memory(memory_id)
-    return {"status": "ok" if success else "error"}
-
-
-# ── SQLite Database Memory APIs ─────────────────────────────────
+# ── SQLite Database Memory APIs (must be before generic memory routes) ──
 
 @app.get("/api/memories/database/entries")
 async def get_db_entries(category: str = None, limit: int = 100, offset: int = 0):
@@ -381,6 +343,46 @@ async def update_db_entry(entry_id: int, request: dict):
 async def delete_db_entry(entry_id: int):
     """Delete an entry from SQLite memory database"""
     success = memory_manager.delete_db_entry(entry_id)
+    return {"status": "ok" if success else "error"}
+
+
+# ── Generic Memory Routes ────────────────────────────────────────
+
+@app.get("/api/memories/{memory_id}")
+async def get_memory(memory_id: str):
+    """Get content of a memory"""
+    content = memory_manager.get_memory_content(memory_id)
+    if content is None:
+        return {"error": "Memory not found"}
+    return {"id": memory_id, "content": content}
+
+
+@app.get("/api/memories/{memory_id}/entries")
+async def get_memory_entries(memory_id: str):
+    """Get memory entries (split by § separator)"""
+    entries = memory_manager.get_memory_entries(memory_id)
+    return {"id": memory_id, "entries": entries}
+
+
+@app.delete("/api/memories/{memory_id}/entries/{entry_index}")
+async def delete_memory_entry(memory_id: str, entry_index: int):
+    """Delete a single memory entry"""
+    success = memory_manager.delete_memory_entry(memory_id, entry_index)
+    return {"status": "ok" if success else "error"}
+
+
+@app.put("/api/memories/{memory_id}")
+async def update_memory(memory_id: str, request: dict):
+    """Update memory content"""
+    content = request.get("content", "")
+    success = memory_manager.update_memory_content(memory_id, content)
+    return {"status": "ok" if success else "error"}
+
+
+@app.delete("/api/memories/{memory_id}")
+async def delete_memory(memory_id: str):
+    """Delete a memory"""
+    success = memory_manager.delete_memory(memory_id)
     return {"status": "ok" if success else "error"}
 
 
