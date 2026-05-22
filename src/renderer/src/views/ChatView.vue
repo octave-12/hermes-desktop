@@ -4,12 +4,39 @@
     <div v-if="!currentSession || currentSession.messages.length === 0" class="empty-state">
       <div class="empty-content">
         <div class="horse-animation">
-          <img 
-            src="https://media.giphy.com/media/3o7btTIbMqBj0kCeHY/giphy.gif" 
-            alt="Running Horse" 
-            class="running-horse-gif"
-            @error="handleImageError"
-          />
+          <svg width="150" height="100" viewBox="0 0 150 100" class="running-horse">
+            <!-- Horse Body -->
+            <ellipse cx="75" cy="50" rx="35" ry="18" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+            <!-- Neck -->
+            <path d="M50 45 Q45 30 50 18 Q55 15 60 18 Q65 25 55 45" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+            <!-- Head -->
+            <path d="M50 18 Q45 12 40 15 L35 22 Q38 28 45 25 L50 22 Z" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+            <!-- Ear -->
+            <path d="M45 15 Q43 8 48 10 Q50 12 48 16 Z" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+            <!-- Eye -->
+            <circle cx="42" cy="20" r="2" fill="#333"/>
+            <circle cx="41.5" cy="19.5" r="0.8" fill="#fff"/>
+            <!-- Mane -->
+            <path class="mane" d="M55 20 Q52 15 58 12 Q62 16 55 22" fill="#ddd"/>
+            <path class="mane" d="M58 25 Q55 20 61 18 Q65 22 58 27" fill="#ddd"/>
+            <path class="mane" d="M60 30 Q57 25 63 23 Q67 27 60 32" fill="#ddd"/>
+            <!-- Front Legs -->
+            <path class="leg-front-left" d="M55 65 L50 88 L56 88 L58 65" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+            <path class="leg-front-right" d="M62 65 L65 88 L71 88 L65 65" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+            <!-- Back Legs -->
+            <path class="leg-back-left" d="M85 65 L78 88 L84 88 L88 65" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+            <path class="leg-back-right" d="M92 65 L98 88 L104 88 L95 65" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="0.5"/>
+            <!-- Hooves -->
+            <ellipse cx="53" cy="89" rx="4" ry="2" fill="#333"/>
+            <ellipse cx="68" cy="89" rx="4" ry="2" fill="#333"/>
+            <ellipse cx="81" cy="89" rx="4" ry="2" fill="#333"/>
+            <ellipse cx="101" cy="89" rx="4" ry="2" fill="#333"/>
+            <!-- Tail -->
+            <path class="tail" d="M110 50 Q125 45 130 55 Q128 65 115 60 Q120 55 110 52" fill="#ddd"/>
+            <!-- Tail strands -->
+            <path class="tail" d="M115 55 Q125 52 128 60" stroke="#ccc" stroke-width="1" fill="none"/>
+            <path class="tail" d="M115 58 Q123 58 126 65" stroke="#ccc" stroke-width="1" fill="none"/>
+          </svg>
         </div>
         <h2>Hermes Agent</h2>
         <p>开始一段新对话，或从左侧选择历史会话</p>
@@ -124,11 +151,6 @@ const inputAreaHeight = ref(120)
 const isResizing = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
-
-function handleImageError(e: Event) {
-  const img = e.target as HTMLImageElement
-  img.style.display = 'none'
-}
 
 const pendingCount = computed(() => {
   if (!currentSession.value) return 0
@@ -402,12 +424,57 @@ onMounted(async () => {
   align-items: center;
 }
 
-.running-horse-gif {
-  width: 120px;
-  height: 120px;
-  border-radius: 12px;
-  object-fit: cover;
-  filter: brightness(1.2) contrast(1.1);
+.running-horse {
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+}
+
+.running-horse .leg-front-left {
+  animation: legRun1 0.4s ease-in-out infinite;
+  transform-origin: 55px 65px;
+}
+
+.running-horse .leg-front-right {
+  animation: legRun2 0.4s ease-in-out infinite;
+  transform-origin: 62px 65px;
+}
+
+.running-horse .leg-back-left {
+  animation: legRun2 0.4s ease-in-out infinite;
+  transform-origin: 85px 65px;
+}
+
+.running-horse .leg-back-right {
+  animation: legRun1 0.4s ease-in-out infinite;
+  transform-origin: 92px 65px;
+}
+
+.running-horse .mane {
+  animation: maneFlow 0.3s ease-in-out infinite;
+}
+
+.running-horse .tail {
+  animation: tailWag 0.5s ease-in-out infinite;
+  transform-origin: 110px 50px;
+}
+
+@keyframes legRun1 {
+  0%, 100% { transform: rotate(-20deg); }
+  50% { transform: rotate(20deg); }
+}
+
+@keyframes legRun2 {
+  0%, 100% { transform: rotate(20deg); }
+  50% { transform: rotate(-20deg); }
+}
+
+@keyframes maneFlow {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-3px); }
+}
+
+@keyframes tailWag {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(10deg); }
 }
 
 /* ── Pending queue ── */
