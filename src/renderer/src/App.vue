@@ -88,12 +88,10 @@
               </svg>
             </button>
           </div>
-          <div class="footer-divider"></div>
           <div class="model-info" v-if="currentModelName" title="当前模型">
             <span class="model-icon">🤖</span>
             <span class="model-name">{{ currentModelName }}</span>
           </div>
-          <div class="footer-divider"></div>
           <button class="settings-btn" @click="showSettings = true" title="设置">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
@@ -441,31 +439,20 @@ onUnmounted(() => {
 }
 
 .sidebar-footer {
-  padding: 10px 12px;
+  padding: 12px 16px;
   border-top: 1px solid #313244;
-  background: #1e1e2e;
 }
 
 .footer-row {
   display: flex;
   align-items: center;
-  gap: 0;
-  border-radius: 8px;
-  background: #313244;
-  padding: 6px 8px;
+  gap: 12px;
 }
 
 .status-group {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.footer-divider {
-  width: 1px;
-  height: 16px;
-  background: #45475a;
-  margin: 0 8px;
 }
 
 .connection-status {
@@ -514,17 +501,14 @@ onUnmounted(() => {
   height: 6px;
   border-radius: 50%;
   background: #f38ba8;
-  box-shadow: 0 0 6px rgba(243, 139, 168, 0.5);
 }
 
 .connection-status.connected .status-dot {
   background: #a6e3a1;
-  box-shadow: 0 0 6px rgba(166, 227, 161, 0.5);
 }
 
 .connection-status.reconnecting .status-dot {
   background: #f9e2af;
-  box-shadow: 0 0 6px rgba(249, 226, 175, 0.5);
   animation: pulse 1s infinite;
 }
 
