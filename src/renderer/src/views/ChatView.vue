@@ -428,7 +428,7 @@ onMounted(async () => {
 
 .input-wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   background: #1e1e2e;
   border: 1px solid #313244;
