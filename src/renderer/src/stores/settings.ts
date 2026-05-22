@@ -14,8 +14,7 @@ export interface ModelProfile {
 
 export interface ModelConfig {
   model: string
-  apiKey: string
-  apiBaseUrl: string
+  provider: string
   temperature: number
   maxTokens: number
 }
@@ -23,8 +22,7 @@ export interface ModelConfig {
 export const useSettingsStore = defineStore('settings', () => {
   const config = ref<ModelConfig>({
     model: '',
-    apiKey: '',
-    apiBaseUrl: '',
+    provider: '',
     temperature: 0.7,
     maxTokens: 2048
   })

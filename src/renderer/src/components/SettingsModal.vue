@@ -42,21 +42,12 @@
                 {{ hasApiKey ? '✅ 已配置' : '⚠️ 未配置' }}
               </span>
             </div>
-            <div class="model-url">{{ localConfig.apiBaseUrl || '未设置 API URL' }}</div>
+            <div class="model-provider">提供商: {{ localConfig.provider || '未设置' }}</div>
           </div>
         </div>
 
         <!-- Configuration Section -->
         <div class="config-section">
-          <div class="setting-group">
-            <label class="setting-label">API Base URL</label>
-            <input
-              v-model="localConfig.apiBaseUrl"
-              class="setting-input"
-              placeholder="例如: https://api.deepseek.com/v1"
-            />
-          </div>
-
           <div class="setting-group">
             <label class="setting-label">API Key</label>
             <div class="input-with-toggle">
@@ -250,10 +241,9 @@ const settingsStore = useSettingsStore()
 
 const activeTab = ref<'model' | 'memory'>('model')
 
-const localConfig = ref<ModelConfig>({
+const localConfig = ref({
   model: '',
-  apiKey: '',
-  apiBaseUrl: '',
+  provider: '',
   temperature: 0.7,
   maxTokens: 2048
 })
@@ -308,8 +298,7 @@ async function loadCurrentConfig() {
       const data = await response.json()
       localConfig.value = {
         model: data.model || 'deepseek-chat',
-        apiKey: '',
-        apiBaseUrl: data.apiBaseUrl || '',
+        provider: data.provider || 'deepseek',
         temperature: data.temperature || 0.7,
         maxTokens: data.maxTokens || 2048
       }
@@ -355,10 +344,6 @@ async function selectModel(modelId: string) {
     
     if (result.success) {
       localConfig.value.model = modelId
-      if (result.apiBaseUrl) {
-        localConfig.value.apiBaseUrl = result.apiBaseUrl
-      }
-      
       await checkApiKeyStatus()
       connectionMessage.value = ''
       showModelSelector.value = false
@@ -369,8 +354,8 @@ async function selectModel(modelId: string) {
 }
 
 async function testConnection() {
-  if (!selectedModelId.value || !localConfig.value.apiBaseUrl) {
-    connectionMessage.value = '请先选择模型并配置 API URL'
+  if (!selectedModelId.value) {
+    connectionMessage.value = '请先选择模型'
     connectionSuccess.value = false
     return
   }
@@ -384,16 +369,11 @@ async function testConnection() {
       hasApiKey.value = true
     }
     
-    const result = await settingsStore.testConnection(
-      selectedModelId.value,
-      localConfig.value.apiBaseUrl
-    )
-    
-    connectionSuccess.value = result.success
-    connectionMessage.value = result.message
+    connectionSuccess.value = true
+    connectionMessage.value = '✅ 配置已保存'
   } catch (error) {
     connectionSuccess.value = false
-    connectionMessage.value = '连接测试失败'
+    connectionMessage.value = '配置失败'
   } finally {
     testingConnection.value = false
   }
@@ -483,7 +463,7 @@ async function confirmDeleteModel(modelId: string, modelName: string) {
       // 如果删除的是当前模型，清空选择
       if (modelId === localConfig.value.model) {
         localConfig.value.model = ''
-        localConfig.value.apiBaseUrl = ''
+        localConfig.value.provider = ''
         hasApiKey.value = false
         apiKeyInput.value = ''
       }

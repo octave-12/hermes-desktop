@@ -47,11 +47,11 @@ async def get_config():
     """Get current model configuration."""
     # Get Hermes default model from config.yaml
     hermes_default = db.get_hermes_default_model()
+    hermes_provider = db.get_hermes_session_id(db.get_config("model", hermes_default)) or "deepseek"
     
     return {
         "model": db.get_config("model", hermes_default),
-        "apiKey": db.get_config("apiKey", ""),
-        "apiBaseUrl": db.get_config("apiBaseUrl", ""),
+        "provider": db.get_config("provider", hermes_provider),
         "temperature": float(db.get_config("temperature", "0.7")),
         "maxTokens": int(db.get_config("maxTokens", "2048")),
     }
@@ -60,7 +60,7 @@ async def get_config():
 @app.post("/api/config")
 async def update_config(request: dict):
     """Update model configuration."""
-    for key in ["model", "apiKey", "apiBaseUrl", "temperature", "maxTokens"]:
+    for key in ["model", "provider", "temperature", "maxTokens"]:
         if key in request:
             db.set_config(key, str(request[key]))
     return {"status": "ok"}
@@ -165,7 +165,7 @@ async def switch_model(request: dict):
     
     # Save to database
     db.set_config("model", model_id)
-    db.set_config("apiBaseUrl", model.get('api_base_url', ''))
+    db.set_config("provider", model.get('provider', 'custom'))
     
     # Set as default model in Hermes Agent config
     model_config_manager.set_default_model(model_id)
@@ -176,7 +176,7 @@ async def switch_model(request: dict):
     return {
         "status": "ok",
         "model": model_id,
-        "apiBaseUrl": model.get('api_base_url', ''),
+        "provider": model.get('provider', 'custom'),
         "hasApiKey": has_api_key,
         "needsApiKey": not has_api_key
     }
