@@ -340,7 +340,6 @@ onUnmounted(() => {
 .logo-horse-icon {
   width: 28px;
   height: 28px;
-  margin-right: 8px;
   margin-left: -5px;
   margin-top: 2px;
 }
@@ -426,7 +425,7 @@ onUnmounted(() => {
   color: #cdd6f4;
   margin: 0;
   font-weight: 600;
-  margin-left: -8px;
+  margin-left: -13px;
 }
 
 .session-list {
@@ -620,6 +619,7 @@ onUnmounted(() => {
 .model-horse-icon {
   width: 20px;
   height: 20px;
+  margin-top: 2px;
 }
 
 .model-name {
@@ -701,7 +701,6 @@ onUnmounted(() => {
 }
 
 .settings-btn:hover {
-  background: rgba(137, 180, 250, 0.1);
   color: #b4befe;
   transform: rotate(45deg);
 }
