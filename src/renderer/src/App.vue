@@ -431,6 +431,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  padding-right: 4px;
 }
 
 .session-item {
@@ -441,9 +442,11 @@ onUnmounted(() => {
   cursor: pointer;
   color: #a6adc8;
   font-size: 0.85rem;
+  line-height: 1.4;
   margin-bottom: 2px;
   transition: background 0.2s;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .session-info {
