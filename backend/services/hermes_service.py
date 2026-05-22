@@ -75,6 +75,15 @@ class HermesService:
         """
         Send message to Hermes Agent and stream back the response.
         """
+        # Validate message length
+        MAX_MESSAGE_LENGTH = 100000  # 100KB
+        if len(user_message) > MAX_MESSAGE_LENGTH:
+            yield {
+                "type": "error",
+                "message": f"消息过长，最大支持 {MAX_MESSAGE_LENGTH} 字符"
+            }
+            return
+        
         # Mark as active
         async with self._tasks_lock:
             self._active_tasks[session_id] = True

@@ -176,11 +176,23 @@ export const useChatStore = defineStore('chat', () => {
     socket.onclose = () => {
       isConnected.value = false
       stopHeartbeat()
+      // Notify user about disconnection
+      const session = getCurrentSession()
+      if (session && session.messages.length > 0) {
+        session.messages.push({
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: '连接已断开，正在尝试重新连接...',
+          timestamp: Date.now()
+        })
+      }
       scheduleReconnect()
     }
 
     socket.onerror = (err) => {
       console.error('[WS] Error:', err)
+      isConnected.value = false
+      stopHeartbeat()
     }
 
     socket.onmessage = (event) => {
@@ -249,18 +261,18 @@ export const useChatStore = defineStore('chat', () => {
       case 'token': {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (!session) break
+        // Clean special control characters
+        const cleanedContent = data.content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
         const lastMsg = session.messages[session.messages.length - 1]
         if (lastMsg && lastMsg.role === 'assistant') {
-          lastMsg.content += data.content
-          session.lastAiMessage = lastMsg.content
+          lastMsg.content += cleanedContent
         } else {
           session.messages.push({
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: data.content,
+            content: cleanedContent,
             timestamp: Date.now()
           })
-          session.lastAiMessage = data.content
         }
         break
       }
@@ -268,6 +280,11 @@ export const useChatStore = defineStore('chat', () => {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (session) {
           session.isLoading = false
+          // Update lastAiMessage only when message is complete
+          const lastMsg = session.messages[session.messages.length - 1]
+          if (lastMsg && lastMsg.role === 'assistant') {
+            session.lastAiMessage = lastMsg.content
+          }
           processPendingMessages(session.id)
         }
         break
@@ -301,13 +318,17 @@ export const useChatStore = defineStore('chat', () => {
       }
       case 'error': {
         const session = sessions.value.find((s) => s.id === data.session_id)
-        if (session) session.isLoading = false
-        session?.messages.push({
-          id: crypto.randomUUID(),
-          role: 'system',
-          content: `Error: ${data.message}`,
-          timestamp: Date.now()
-        })
+        if (session) {
+          session.isLoading = false
+          session.messages.push({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: `Error: ${data.message}`,
+            timestamp: Date.now()
+          })
+        } else {
+          console.error(`Error for unknown session ${data.session_id}: ${data.message}`)
+        }
         break
       }
     }
@@ -315,7 +336,22 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── Send chat message ────────────────────────────────────
   function sendMessage(content: string) {
+    // Validate message content
+    const trimmedContent = content.trim()
+    if (!trimmedContent) return
+    
+    // Check WebSocket connection
     if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+      // Notify user about connection issue
+      const session = getCurrentSession()
+      if (session) {
+        session.messages.push({
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: '连接已断开，无法发送消息。请等待重连或刷新页面。',
+          timestamp: Date.now()
+        })
+      }
       return
     }
 
@@ -325,7 +361,7 @@ export const useChatStore = defineStore('chat', () => {
     // If AI is currently responding, add to pending queue
     if (session.isLoading) {
       const queue = pendingMessages.value.get(session.id) || []
-      queue.push(content)
+      queue.push(trimmedContent)
       pendingMessages.value.set(session.id, queue)
       return
     }
@@ -333,7 +369,7 @@ export const useChatStore = defineStore('chat', () => {
     const message: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content,
+      content: trimmedContent,
       timestamp: Date.now()
     }
 
