@@ -369,7 +369,7 @@ onUnmounted(() => {
 }
 
 .search-box {
-  margin: 5px 0 0 0;
+  margin: 13px 0 0 0;
 }
 
 .search-input-wrapper {
