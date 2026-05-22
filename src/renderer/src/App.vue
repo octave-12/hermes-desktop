@@ -19,16 +19,18 @@
           </div>
         </div>
         <div v-if="showSearch" class="search-box">
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="搜索会话..." 
-            class="search-input"
-            @input="filterSessions"
-          />
-          <button class="search-close-btn" @click="showSearch = false; searchQuery = ''" title="关闭">
-            ×
-          </button>
+          <div class="search-input-wrapper">
+            <input 
+              v-model="searchQuery" 
+              type="text" 
+              placeholder="搜索会话..." 
+              class="search-input"
+              @input="filterSessions"
+            />
+            <button class="search-close-btn" @click="showSearch = false; searchQuery = ''" title="关闭">
+              ×
+            </button>
+          </div>
         </div>
         <button class="new-chat-btn" @click="createNewSession">+ 新对话</button>
       </div>
@@ -354,15 +356,18 @@ onUnmounted(() => {
 }
 
 .search-box {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   margin-bottom: 12px;
 }
 
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .search-input {
-  flex: 1;
-  padding: 8px 10px;
+  width: 100%;
+  padding: 8px 32px 8px 10px;
   background: #313244;
   border: 1px solid #45475a;
   border-radius: 6px;
@@ -376,12 +381,19 @@ onUnmounted(() => {
 }
 
 .search-close-btn {
+  position: absolute;
+  right: 8px;
   background: transparent;
   border: none;
   color: #6c7086;
   cursor: pointer;
-  font-size: 1.2rem;
-  padding: 4px;
+  font-size: 1rem;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
