@@ -124,7 +124,18 @@
                   <button class="btn btn-sm btn-danger" @click="deleteDbEntry(entry.id)">🗑️</button>
                 </div>
               </div>
-              <pre class="db-entry-content">{{ entry.content }}</pre>
+              <div class="db-entry-content-wrapper">
+                <pre class="db-entry-content" :class="{ collapsed: !expandedEntries.has(entry.id) }">{{ 
+                  expandedEntries.has(entry.id) ? entry.content : truncateContent(entry.content, 100) 
+                }}</pre>
+                <button 
+                  v-if="entry.content.length > 100" 
+                  class="expand-btn"
+                  @click="toggleEntryExpand(entry.id)"
+                >
+                  {{ expandedEntries.has(entry.id) ? '−' : '+' }}
+                </button>
+              </div>
               <div v-if="entry.tags?.length" class="db-entry-tags">
                 <span v-for="tag in entry.tags" :key="tag" class="tag">{{ tag }}</span>
               </div>
@@ -254,6 +265,7 @@ const dbCategories = ref<DbCategory[]>([])
 const selectedCategory = ref('')
 const loadingDb = ref(false)
 const savingDb = ref(false)
+const expandedEntries = ref(new Set<number>())
 const dbEntryForm = ref({
   content: '',
   category: 'general',
@@ -262,6 +274,21 @@ const dbEntryForm = ref({
 })
 
 const backendUrl = 'http://localhost:8765'
+
+function truncateContent(content: string, maxLength: number): string {
+  if (content.length <= maxLength) return content
+  return content.substring(0, maxLength) + '...'
+}
+
+function toggleEntryExpand(entryId: number) {
+  if (expandedEntries.value.has(entryId)) {
+    expandedEntries.value.delete(entryId)
+  } else {
+    expandedEntries.value.add(entryId)
+  }
+  // Force reactivity update
+  expandedEntries.value = new Set(expandedEntries.value)
+}
 
 function getMemoryIcon(id: string): string {
   const icons: Record<string, string> = {
@@ -907,6 +934,10 @@ onMounted(() => {
   gap: 4px;
 }
 
+.db-entry-content-wrapper {
+  position: relative;
+}
+
 .db-entry-content {
   margin: 0;
   padding: 12px;
@@ -915,6 +946,34 @@ onMounted(() => {
   line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.db-entry-content.collapsed {
+  max-height: 80px;
+  overflow: hidden;
+}
+
+.expand-btn {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  background: #45475a;
+  border: 1px solid #6c7086;
+  color: #cdd6f4;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expand-btn:hover {
+  background: #6c7086;
 }
 
 .db-entry-tags {
