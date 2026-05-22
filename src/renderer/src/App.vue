@@ -480,7 +480,8 @@ onUnmounted(() => {
 }
 
 .menu-btn {
-  display: none;
+  opacity: 0;
+  pointer-events: none;
   background: none;
   border: none;
   color: #6c7086;
@@ -488,12 +489,15 @@ onUnmounted(() => {
   padding: 4px;
   border-radius: 4px;
   line-height: 0;
-}
-
-.session-item:hover .menu-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: opacity 0.2s;
+}
+
+.session-item:hover .menu-btn {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .menu-btn:hover {
