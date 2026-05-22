@@ -6,7 +6,8 @@ export function getBackendUrl(): string {
 }
 
 export function getWsUrl(): string {
-  return BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+  const wsUrl = BACKEND_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+  return wsUrl.endsWith('/ws') ? wsUrl : `${wsUrl}/ws`
 }
 
 export function setAuthToken(token: string | null): void {
