@@ -3,18 +3,75 @@
     <!-- Empty state -->
     <div v-if="!currentSession || currentSession.messages.length === 0" class="empty-state">
       <div class="empty-content">
-        <div class="horse-animation">
-          <svg width="80" height="80" viewBox="0 0 100 100" class="running-horse">
-            <path class="horse-body" d="M70 45 Q75 40 80 45 L85 50 Q82 55 78 55 L70 52 Z" fill="#89b4fa"/>
-            <path class="horse-neck" d="M70 45 Q68 35 72 28 L76 30 Q78 38 75 45 Z" fill="#89b4fa"/>
-            <path class="horse-head" d="M72 28 Q78 25 82 28 L84 32 Q80 35 76 33 Z" fill="#89b4fa"/>
-            <circle cx="80" cy="30" r="2" fill="#1e1e2e"/>
-            <path class="horse-leg-1" d="M72 52 L70 65 L73 65 L75 52" fill="#89b4fa"/>
-            <path class="horse-leg-2" d="M78 52 L82 65 L85 65 L80 52" fill="#89b4fa"/>
-            <path class="horse-leg-3" d="M68 52 L62 68 L65 68 L70 52" fill="#89b4fa"/>
-            <path class="horse-leg-4" d="M74 52 L72 68 L75 68 L78 52" fill="#89b4fa"/>
-            <path class="horse-tail" d="M85 50 Q92 48 95 55 Q93 60 88 58" fill="#89b4fa" stroke="#89b4fa" stroke-width="2"/>
-            <path class="horse-mane" d="M68 35 Q65 32 68 28 Q72 30 70 35 Z" fill="#89b4fa"/>
+        <div class="horse-gallery">
+          <!-- Horse 1: Simple running horse -->
+          <svg width="60" height="60" viewBox="0 0 100 100" class="horse-option">
+            <path d="M75 45 Q80 40 85 45 L90 50 Q87 55 83 55 L75 52 Z" fill="#89b4fa"/>
+            <path d="M75 45 Q73 35 77 28 L81 30 Q83 38 80 45 Z" fill="#89b4fa"/>
+            <path d="M77 28 Q83 25 87 28 L89 32 Q85 35 81 33 Z" fill="#89b4fa"/>
+            <circle cx="85" cy="30" r="2" fill="#1e1e2e"/>
+            <path d="M77 52 L75 65 L78 65 L80 52" fill="#89b4fa"/>
+            <path d="M83 52 L87 65 L90 65 L85 52" fill="#89b4fa"/>
+            <path d="M73 52 L67 68 L70 68 L75 52" fill="#89b4fa"/>
+            <path d="M79 52 L77 68 L80 68 L83 52" fill="#89b4fa"/>
+            <path d="M90 50 Q97 48 100 55 Q98 60 93 58" fill="#89b4fa"/>
+            <path d="M73 35 Q70 32 73 28 Q77 30 75 35 Z" fill="#89b4fa"/>
+          </svg>
+          
+          <!-- Horse 2: Galloping horse -->
+          <svg width="60" height="60" viewBox="0 0 100 100" class="horse-option">
+            <ellipse cx="60" cy="50" rx="25" ry="12" fill="#a6e3a1"/>
+            <path d="M40 50 Q38 38 42 30 L48 32 Q50 42 45 50 Z" fill="#a6e3a1"/>
+            <path d="M42 30 Q50 26 55 30 L57 35 Q52 38 46 34 Z" fill="#a6e3a1"/>
+            <circle cx="53" cy="32" r="2" fill="#1e1e2e"/>
+            <path d="M45 58 L35 75 L40 75 L50 60" fill="#a6e3a1"/>
+            <path d="M55 58 L65 75 L70 75 L60 60" fill="#a6e3a1"/>
+            <path d="M70 55 L80 70 L85 70 L75 55" fill="#a6e3a1"/>
+            <path d="M50 55 L45 70 L50 70 L55 58" fill="#a6e3a1"/>
+            <path d="M85 52 Q95 48 98 56 Q96 62 88 58" fill="#a6e3a1"/>
+            <path d="M38 40 Q32 35 36 28 Q42 32 40 40 Z" fill="#a6e3a1"/>
+          </svg>
+          
+          <!-- Horse 3: Standing horse -->
+          <svg width="60" height="60" viewBox="0 0 100 100" class="horse-option">
+            <ellipse cx="55" cy="45" rx="20" ry="10" fill="#f9e2af"/>
+            <path d="M40 45 Q38 32 42 24 L48 26 Q50 36 46 45 Z" fill="#f9e2af"/>
+            <path d="M42 24 Q50 20 55 24 L57 28 Q52 32 46 28 Z" fill="#f9e2af"/>
+            <circle cx="53" cy="26" r="2" fill="#1e1e2e"/>
+            <path d="M40 52 L40 75 L45 75 L45 52" fill="#f9e2af"/>
+            <path d="M50 52 L50 75 L55 75 L55 52" fill="#f9e2af"/>
+            <path d="M60 52 L60 75 L65 75 L65 52" fill="#f9e2af"/>
+            <path d="M70 52 L70 75 L75 75 L75 52" fill="#f9e2af"/>
+            <path d="M75 45 Q85 42 88 50 Q86 56 78 52" fill="#f9e2af"/>
+            <path d="M38 36 Q32 32 35 26 Q40 30 38 36 Z" fill="#f9e2af"/>
+          </svg>
+          
+          <!-- Horse 4: Jumping horse -->
+          <svg width="60" height="60" viewBox="0 0 100 100" class="horse-option">
+            <ellipse cx="55" cy="35" rx="22" ry="10" fill="#f38ba8"/>
+            <path d="M38 35 Q36 22 40 14 L46 16 Q48 26 44 35 Z" fill="#f38ba8"/>
+            <path d="M40 14 Q48 10 53 14 L55 18 Q50 22 44 18 Z" fill="#f38ba8"/>
+            <circle cx="51" cy="16" r="2" fill="#1e1e2e"/>
+            <path d="M38 42 L25 60 L30 60 L42 45" fill="#f38ba8"/>
+            <path d="M50 42 L55 60 L60 60 L55 45" fill="#f38ba8"/>
+            <path d="M65 40 L80 55 L85 55 L70 42" fill="#f38ba8"/>
+            <path d="M72 42 L75 58 L80 58 L75 45" fill="#f38ba8"/>
+            <path d="M77 35 Q87 32 90 40 Q88 46 80 42" fill="#f38ba8"/>
+            <path d="M36 26 Q30 22 33 16 Q38 20 36 26 Z" fill="#f38ba8"/>
+          </svg>
+          
+          <!-- Horse 5: Trotting horse -->
+          <svg width="60" height="60" viewBox="0 0 100 100" class="horse-option">
+            <ellipse cx="60" cy="48" rx="23" ry="11" fill="#cba6f7"/>
+            <path d="M42 48 Q40 35 44 27 L50 29 Q52 39 48 48 Z" fill="#cba6f7"/>
+            <path d="M44 27 Q52 23 57 27 L59 31 Q54 35 48 31 Z" fill="#cba6f7"/>
+            <circle cx="55" cy="29" r="2" fill="#1e1e2e"/>
+            <path d="M45 55 L40 72 L45 72 L50 58" fill="#cba6f7"/>
+            <path d="M55 55 L60 72 L65 72 L60 58" fill="#cba6f7"/>
+            <path d="M68 55 L72 72 L77 72 L73 58" fill="#cba6f7"/>
+            <path d="M75 55 L70 72 L75 72 L78 58" fill="#cba6f7"/>
+            <path d="M83 48 Q93 45 96 53 Q94 59 86 55" fill="#cba6f7"/>
+            <path d="M40 38 Q34 34 37 28 Q43 32 41 38 Z" fill="#cba6f7"/>
           </svg>
         </div>
         <h2>Hermes Agent</h2>
@@ -396,58 +453,23 @@ onMounted(async () => {
 }
 
 /* ── Horse Animation ── */
-.horse-animation {
+.horse-gallery {
+  display: flex;
+  gap: 12px;
   margin-bottom: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
-.running-horse {
-  animation: horseRun 0.6s ease-in-out infinite;
+.horse-option {
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  opacity: 0.8;
 }
 
-.running-horse .horse-leg-1,
-.running-horse .horse-leg-3 {
-  animation: legFront 0.3s ease-in-out infinite;
-  transform-origin: center top;
-}
-
-.running-horse .horse-leg-2,
-.running-horse .horse-leg-4 {
-  animation: legBack 0.3s ease-in-out infinite;
-  transform-origin: center top;
-}
-
-.running-horse .horse-tail {
-  animation: tailWag 0.4s ease-in-out infinite;
-  transform-origin: left center;
-}
-
-.running-horse .horse-mane {
-  animation: maneFlow 0.3s ease-in-out infinite;
-}
-
-@keyframes horseRun {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-
-@keyframes legFront {
-  0%, 100% { transform: rotate(-15deg); }
-  50% { transform: rotate(15deg); }
-}
-
-@keyframes legBack {
-  0%, 100% { transform: rotate(15deg); }
-  50% { transform: rotate(-15deg); }
-}
-
-@keyframes tailWag {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
-}
-
-@keyframes maneFlow {
-  0%, 100% { transform: scaleX(1); }
-  50% { transform: scaleX(1.1); }
+.horse-option:hover {
+  transform: scale(1.1);
+  opacity: 1;
 }
 
 /* ── Pending queue ── */
