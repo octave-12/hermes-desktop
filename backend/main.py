@@ -460,6 +460,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif msg_type == "delete_session":
+                if not validate_message(message, ["session_id"]):
+                    continue
                 session_id = message["session_id"]
                 db.delete_session(session_id)
                 await websocket.send_text(json.dumps({
@@ -468,6 +470,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif msg_type == "rename_session":
+                if not validate_message(message, ["session_id", "title"]):
+                    continue
                 session_id = message["session_id"]
                 title = message["title"]
                 db.update_session_title(session_id, title)
@@ -478,6 +482,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif msg_type == "stop_generation":
+                if not validate_message(message, ["session_id"]):
+                    continue
                 session_id = message["session_id"]
                 await hermes_service.stop_generation(session_id)
                 await websocket.send_text(json.dumps({
@@ -486,6 +492,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif msg_type == "chat":
+                if not validate_message(message, ["content"]):
+                    continue
                 session_id = message.get("session_id", str(uuid.uuid4()))
                 content = message["content"]
                 user_msg_id = message.get("message_id", str(uuid.uuid4()))

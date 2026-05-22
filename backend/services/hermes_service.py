@@ -177,7 +177,16 @@ class HermesService:
         
         # Stream deltas from queue
         full_content = ""
+        timeout_seconds = 120  # 2 minutes timeout
+        start_time = asyncio.get_event_loop().time()
+        
         while not done_event.is_set() or not queue.empty():
+            # Check timeout
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed > timeout_seconds:
+                yield {"type": "error", "message": f"Timeout after {timeout_seconds} seconds"}
+                return
+            
             try:
                 delta = await asyncio.wait_for(queue.get(), timeout=0.1)
                 if delta.startswith("__ERROR__:"):

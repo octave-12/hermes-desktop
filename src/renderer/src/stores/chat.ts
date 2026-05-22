@@ -69,6 +69,13 @@ export const useChatStore = defineStore('chat', () => {
   function deleteSession(id: string) {
     const idx = sessions.value.findIndex((s) => s.id === id)
     if (idx === -1) return
+    
+    const session = sessions.value[idx]
+    // Stop generation if session is loading
+    if (session.isLoading) {
+      wsSend({ type: 'stop_generation', session_id: id })
+    }
+    
     sessions.value.splice(idx, 1)
     // Clean up pending messages for deleted session
     pendingMessages.value.delete(id)
@@ -79,6 +86,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function switchSession(id: string) {
+    // Stop current session generation if switching to different session
+    const currentSession = getCurrentSession()
+    if (currentSession && currentSession.id !== id && currentSession.isLoading) {
+      wsSend({ type: 'stop_generation', session_id: currentSession.id })
+      currentSession.isLoading = false
+    }
+    
     currentSessionId.value = id
     const session = sessions.value.find((s) => s.id === id)
     // Load messages if session has none yet (lazy load from DB)
