@@ -138,6 +138,12 @@ export const useChatStore = defineStore('chat', () => {
   function connectWebSocket(url: string) {
     backendUrl = url
 
+    // Clear any pending reconnect timer before creating new connection
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+
     if (ws.value) {
       ws.value.onclose = null
       ws.value.close()

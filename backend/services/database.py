@@ -68,41 +68,36 @@ def init_db():
 # ── Session operations ────────────────────────────────────────
 
 def create_session(session_id: str, title: str = "新对话") -> dict:
-    conn = get_connection()
     now = int(time.time() * 1000)
-    conn.execute(
-        "INSERT INTO sessions (id, title, created_at) VALUES (?, ?, ?)",
-        (session_id, title, now),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO sessions (id, title, created_at) VALUES (?, ?, ?)",
+            (session_id, title, now),
+        )
+        conn.commit()
     return {"id": session_id, "title": title, "createdAt": now}
 
 
 def list_sessions() -> list[dict]:
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, title, created_at FROM sessions ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, title, created_at FROM sessions ORDER BY created_at DESC"
+        ).fetchall()
     return [{"id": r["id"], "title": r["title"], "createdAt": r["created_at"]} for r in rows]
 
 
 def update_session_title(session_id: str, title: str):
-    conn = get_connection()
-    conn.execute("UPDATE sessions SET title = ? WHERE id = ?", (title, session_id))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute("UPDATE sessions SET title = ? WHERE id = ?", (title, session_id))
+        conn.commit()
 
 
 def delete_session(session_id: str):
     """Delete session and all its messages (CASCADE)."""
-    conn = get_connection()
-    # Ensure foreign keys are enabled for CASCADE to work
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        conn.commit()
 
 
 # ── Message operations ────────────────────────────────────────
@@ -115,37 +110,34 @@ def add_message(
     tool_calls: Optional[list] = None,
     timestamp: Optional[int] = None,
 ):
-    conn = get_connection()
     ts = timestamp or int(time.time() * 1000)
     tc_json = json.dumps(tool_calls) if tool_calls else None
-    conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, tool_calls, timestamp) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (message_id, session_id, role, content, tc_json, ts),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, tool_calls, timestamp) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (message_id, session_id, role, content, tc_json, ts),
+        )
+        conn.commit()
 
 
 def update_message_content(message_id: str, content: str, tool_calls: Optional[list] = None):
-    conn = get_connection()
     tc_json = json.dumps(tool_calls) if tool_calls else None
-    conn.execute(
-        "UPDATE messages SET content = ?, tool_calls = ? WHERE id = ?",
-        (content, tc_json, message_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE messages SET content = ?, tool_calls = ? WHERE id = ?",
+            (content, tc_json, message_id),
+        )
+        conn.commit()
 
 
 def get_session_messages(session_id: str) -> list[dict]:
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, role, content, tool_calls, timestamp FROM messages "
-        "WHERE session_id = ? ORDER BY timestamp ASC",
-        (session_id,),
-    ).fetchall()
-    conn.close()
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, role, content, tool_calls, timestamp FROM messages "
+            "WHERE session_id = ? ORDER BY timestamp ASC",
+            (session_id,),
+        ).fetchall()
     messages = []
     for r in rows:
         msg = {
@@ -163,52 +155,47 @@ def get_session_messages(session_id: str) -> list[dict]:
 # ── Hermes session tracking ───────────────────────────────────
 
 def get_hermes_session_id(session_id: str) -> Optional[str]:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT hermes_session_id FROM sessions WHERE id = ?", (session_id,)
-    ).fetchone()
-    conn.close()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT hermes_session_id FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
     return row["hermes_session_id"] if row else None
 
 
 def set_hermes_session_id(session_id: str, hermes_session_id: str):
-    conn = get_connection()
-    conn.execute(
-        "UPDATE sessions SET hermes_session_id = ? WHERE id = ?",
-        (hermes_session_id, session_id),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE sessions SET hermes_session_id = ? WHERE id = ?",
+            (hermes_session_id, session_id),
+        )
+        conn.commit()
 
 
 # ── Config operations ────────────────────────────────────────
 
 def get_config(key: str, default: str = "") -> str:
     """Get a config value by key."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT value FROM config WHERE key = ?", (key,)
-    ).fetchone()
-    conn.close()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT value FROM config WHERE key = ?", (key,)
+        ).fetchone()
     return row["value"] if row else default
 
 
 def set_config(key: str, value: str):
     """Set a config value."""
-    conn = get_connection()
-    conn.execute(
-        "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-        (key, value),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        conn.commit()
 
 
 def get_all_config() -> dict:
     """Get all config as a dictionary."""
-    conn = get_connection()
-    rows = conn.execute("SELECT key, value FROM config").fetchall()
-    conn.close()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT key, value FROM config").fetchall()
     return {r["key"]: r["value"] for r in rows}
 
 
