@@ -226,7 +226,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
-import { useSettingsStore, type ModelConfig, type ModelProfile } from '@/stores/settings'
+import { useSettingsStore, type ModelProfile } from '@/stores/settings'
 import MemoryManager from './MemoryManager.vue'
 
 const emit = defineEmits<{
