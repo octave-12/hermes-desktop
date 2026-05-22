@@ -396,6 +396,7 @@ onMounted(async () => {
   width: 200px;
   height: auto;
   filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25));
+  transform: scaleX(-1);
 }
 
 /* ── Pending queue ── */
