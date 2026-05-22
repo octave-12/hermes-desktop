@@ -62,8 +62,11 @@ app.whenReady().then(() => {
   })
 
   // IPC: Get backend connection status
+  // TODO: For production, use WSS (WebSocket Secure) and configurable URL
   ipcMain.handle('get-backend-url', () => {
-    return 'ws://localhost:8765/ws'
+    const protocol = process.env.NODE_ENV === 'production' ? 'wss' : 'ws'
+    const host = process.env.BACKEND_HOST || 'localhost:8765'
+    return `${protocol}://${host}/ws`
   })
 
   // IPC: Restart all services (including client)

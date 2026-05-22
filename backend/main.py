@@ -502,7 +502,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[WS] Error: {e}")
         try:
             await websocket.send_text(
-                json.dumps({"type": "error", "message": str(e)})
+                json.dumps({"type": "error", "message": "An internal error occurred"})
             )
         except Exception:
             pass
