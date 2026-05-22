@@ -5,54 +5,64 @@ import sqlite3
 import json
 import time
 from typing import Optional
+from contextlib import contextmanager
 
 from config import DB_PATH
 
 
-def get_connection() -> sqlite3.Connection:
+@contextmanager
+def get_connection():
+    """Get database connection with automatic cleanup."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _get_conn():
+    """Legacy helper for non-contextmanager usage."""
+    return sqlite3.connect(DB_PATH)
 
 
 def init_db():
     """Create tables if they don't exist."""
-    conn = get_connection()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            id                  TEXT PRIMARY KEY,
-            title               TEXT NOT NULL DEFAULT '新对话',
-            hermes_session_id   TEXT,
-            created_at          INTEGER NOT NULL
-        );
+    with get_connection() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id                  TEXT PRIMARY KEY,
+                title               TEXT NOT NULL DEFAULT '新对话',
+                hermes_session_id   TEXT,
+                created_at          INTEGER NOT NULL
+            );
 
-        CREATE TABLE IF NOT EXISTS messages (
-            id          TEXT PRIMARY KEY,
-            session_id  TEXT NOT NULL,
-            role        TEXT NOT NULL,
-            content     TEXT NOT NULL DEFAULT '',
-            tool_calls  TEXT,
-            timestamp   INTEGER NOT NULL,
-            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-        );
+            CREATE TABLE IF NOT EXISTS messages (
+                id          TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL,
+                role        TEXT NOT NULL,
+                content     TEXT NOT NULL DEFAULT '',
+                tool_calls  TEXT,
+                timestamp   INTEGER NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
 
-        CREATE TABLE IF NOT EXISTS config (
-            key     TEXT PRIMARY KEY,
-            value   TEXT NOT NULL
-        );
+            CREATE TABLE IF NOT EXISTS config (
+                key     TEXT PRIMARY KEY,
+                value   TEXT NOT NULL
+            );
 
-        CREATE INDEX IF NOT EXISTS idx_messages_session
-            ON messages(session_id, timestamp);
-    """)
-    # Migration: add hermes_session_id column if missing
-    try:
-        conn.execute("ALTER TABLE sessions ADD COLUMN hermes_session_id TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # column already exists
-    conn.close()
+            CREATE INDEX IF NOT EXISTS idx_messages_session
+                ON messages(session_id, timestamp);
+        """)
+        # Migration: add hermes_session_id column if missing
+        try:
+            conn.execute("ALTER TABLE sessions ADD COLUMN hermes_session_id TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 # ── Session operations ────────────────────────────────────────

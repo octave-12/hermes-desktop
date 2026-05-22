@@ -153,8 +153,8 @@ class HermesService:
             content_parts.append(delta)
             try:
                 loop.call_soon_threadsafe(queue.put_nowait, delta)
-            except:
-                pass
+            except Exception as e:
+                print(f"[WARN] Failed to queue delta: {e}")
         
         async def run_agent():
             """Run agent in thread pool."""
@@ -228,11 +228,22 @@ class HermesService:
             hermes_session_id = None
             in_content = False
             
+            # Timeout wrapper
+            timeout_seconds = 300  # 5 minutes
+            start_time = asyncio.get_event_loop().time()
+            
             async def read_line(stream):
                 line = await stream.readline()
                 return line.decode('utf-8') if line else None
             
             while True:
+                # Check timeout
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed > timeout_seconds:
+                    process.terminate()
+                    yield {"type": "error", "message": f"Timeout after {timeout_seconds} seconds"}
+                    return
+                
                 line = await read_line(process.stdout)
                 if line is None:
                     break
@@ -289,8 +300,7 @@ class HermesService:
         except FileNotFoundError:
             yield {
                 "type": "error",
-                "message": f"Hermes binary not found at: {self._hermes_bin}. "
-                "Set HERMES_VENV_DIR env variable to your hermes-agent venv path.",
+                "message": "Hermes binary not found. Please check HERMES_VENV_DIR environment variable.",
             }
         except Exception as e:
             yield {"type": "error", "message": f"Unexpected error: {str(e)}"}
