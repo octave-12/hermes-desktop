@@ -332,7 +332,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
 }
 
 .header-actions {
@@ -412,7 +411,7 @@ onUnmounted(() => {
 .app-title {
   font-size: 1.2rem;
   color: #cdd6f4;
-  margin: 0 0 12px 0;
+  margin: 0;
   font-weight: 600;
 }
 
@@ -552,7 +551,7 @@ onUnmounted(() => {
 }
 
 .sidebar-footer {
-  padding: 12px 16px;
+  padding: 8px 16px;
   border-top: 1px solid #313244;
 }
 
