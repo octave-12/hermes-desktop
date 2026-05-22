@@ -3,6 +3,7 @@
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
         <div class="header-row">
+          <img src="@/assets/horse-running.gif" alt="Hermes" class="logo-horse-icon" />
           <h1 class="app-title">Hermes</h1>
           <div class="header-actions">
             <button class="new-chat-icon-btn" @click="createNewSession" title="新对话">
@@ -334,6 +335,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.logo-horse-icon {
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
 }
 
 .header-actions {
