@@ -32,7 +32,7 @@
         <div class="memory-card-footer">
           <button 
             class="btn btn-view" 
-            @click="viewMemory(memory)"
+            @click="memory.id === 'database' ? viewDatabase() : viewMemory(memory)"
             :disabled="!memory.exists"
           >
             👁️ 查看
@@ -91,6 +91,89 @@
       </div>
     </div>
 
+    <!-- Database Memory Modal -->
+    <div v-if="showDbModal" class="modal-overlay" @click.self="closeDbModal">
+      <div class="modal-content db-modal">
+        <div class="modal-header">
+          <h2>💾 SQLite 记忆数据库</h2>
+          <button class="close-btn" @click="closeDbModal">×</button>
+        </div>
+        <div class="modal-body">
+          <!-- Category filter -->
+          <div class="db-toolbar">
+            <select v-model="selectedCategory" @change="loadDbEntries" class="category-select">
+              <option value="">全部分类</option>
+              <option v-for="cat in dbCategories" :key="cat.category" :value="cat.category">
+                {{ cat.category }} ({{ cat.count }})
+              </option>
+            </select>
+            <button class="btn btn-primary" @click="showAddDbEntry = true">➕ 新增记忆</button>
+          </div>
+          
+          <div v-if="loadingDb" class="loading">加载中...</div>
+          <div v-else-if="dbEntries.length > 0" class="db-entries">
+            <div v-for="entry in dbEntries" :key="entry.id" class="db-entry">
+              <div class="db-entry-header">
+                <div class="db-entry-meta">
+                  <span class="db-entry-id">#{{ entry.id }}</span>
+                  <span class="db-entry-category">{{ entry.category }}</span>
+                  <span class="db-entry-importance">⭐{{ entry.importance }}</span>
+                </div>
+                <div class="db-entry-actions">
+                  <button class="btn btn-sm" @click="editDbEntry(entry)">✏️</button>
+                  <button class="btn btn-sm btn-danger" @click="deleteDbEntry(entry.id)">🗑️</button>
+                </div>
+              </div>
+              <pre class="db-entry-content">{{ entry.content }}</pre>
+              <div v-if="entry.tags?.length" class="db-entry-tags">
+                <span v-for="tag in entry.tags" :key="tag" class="tag">{{ tag }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-message">暂无记忆记录</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeDbModal">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Database Entry Modal -->
+    <div v-if="showAddDbEntry || editingDbEntry" class="modal-overlay" @click.self="closeDbEntryModal">
+      <div class="modal-content db-entry-modal">
+        <div class="modal-header">
+          <h2>{{ editingDbEntry ? '✏️ 编辑记忆' : '➕ 新增记忆' }}</h2>
+          <button class="close-btn" @click="closeDbEntryModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>内容</label>
+            <textarea v-model="dbEntryForm.content" rows="5" placeholder="输入记忆内容..."></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>分类</label>
+              <input v-model="dbEntryForm.category" placeholder="general" />
+            </div>
+            <div class="form-group">
+              <label>重要性 (1-5)</label>
+              <input v-model.number="dbEntryForm.importance" type="number" min="1" max="5" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>标签 (逗号分隔)</label>
+            <input v-model="dbEntryForm.tagsInput" placeholder="tag1, tag2" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeDbEntryModal">取消</button>
+          <button class="btn btn-primary" @click="saveDbEntry" :disabled="savingDb">
+            {{ savingDb ? '保存中...' : '保存' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Edit Memory Modal -->
     <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
       <div class="modal-content memory-edit-modal">
@@ -135,6 +218,21 @@ interface MemoryEntry {
   raw: string
 }
 
+interface DbEntry {
+  id: number
+  content: string
+  category: string
+  importance: number
+  tags: string[]
+  created_at: string
+  updated_at: string
+}
+
+interface DbCategory {
+  category: string
+  count: number
+}
+
 const memories = ref<Memory[]>([])
 const selectedMemory = ref<Memory | null>(null)
 const loading = ref(false)
@@ -146,6 +244,22 @@ const showContentModal = ref(false)
 const showEditModal = ref(false)
 const editContent = ref('')
 const saving = ref(false)
+
+// Database memory state
+const showDbModal = ref(false)
+const showAddDbEntry = ref(false)
+const editingDbEntry = ref<DbEntry | null>(null)
+const dbEntries = ref<DbEntry[]>([])
+const dbCategories = ref<DbCategory[]>([])
+const selectedCategory = ref('')
+const loadingDb = ref(false)
+const savingDb = ref(false)
+const dbEntryForm = ref({
+  content: '',
+  category: 'general',
+  importance: 1,
+  tagsInput: ''
+})
 
 const backendUrl = 'http://localhost:8765'
 
@@ -289,6 +403,139 @@ function closeContentModal() {
 function closeEditModal() {
   showEditModal.value = false
   editContent.value = ''
+}
+
+// Database memory functions
+async function viewDatabase() {
+  showDbModal.value = true
+  await loadDbCategories()
+  await loadDbEntries()
+}
+
+async function loadDbCategories() {
+  try {
+    const response = await fetch(`${backendUrl}/api/memories/database/categories`)
+    const data = await response.json()
+    dbCategories.value = data.categories || []
+  } catch (e: any) {
+    console.error('Failed to load categories:', e)
+  }
+}
+
+async function loadDbEntries() {
+  loadingDb.value = true
+  try {
+    const url = selectedCategory.value
+      ? `${backendUrl}/api/memories/database/entries?category=${selectedCategory.value}`
+      : `${backendUrl}/api/memories/database/entries`
+    const response = await fetch(url)
+    const data = await response.json()
+    dbEntries.value = data.entries || []
+  } catch (e: any) {
+    console.error('Failed to load entries:', e)
+  } finally {
+    loadingDb.value = false
+  }
+}
+
+function closeDbModal() {
+  showDbModal.value = false
+  dbEntries.value = []
+  selectedCategory.value = ''
+}
+
+function editDbEntry(entry: DbEntry) {
+  editingDbEntry.value = entry
+  dbEntryForm.value = {
+    content: entry.content,
+    category: entry.category,
+    importance: entry.importance,
+    tagsInput: entry.tags?.join(', ') || ''
+  }
+}
+
+function closeDbEntryModal() {
+  showAddDbEntry.value = false
+  editingDbEntry.value = null
+  dbEntryForm.value = {
+    content: '',
+    category: 'general',
+    importance: 1,
+    tagsInput: ''
+  }
+}
+
+async function saveDbEntry() {
+  savingDb.value = true
+  try {
+    const tags = dbEntryForm.value.tagsInput
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t)
+    
+    if (editingDbEntry.value) {
+      // Update existing
+      const response = await fetch(`${backendUrl}/api/memories/database/entries/${editingDbEntry.value.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: dbEntryForm.value.content,
+          category: dbEntryForm.value.category,
+          importance: dbEntryForm.value.importance,
+          tags
+        })
+      })
+      const data = await response.json()
+      if (data.status !== 'ok') {
+        alert('更新失败')
+        return
+      }
+    } else {
+      // Add new
+      const response = await fetch(`${backendUrl}/api/memories/database/entries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: dbEntryForm.value.content,
+          category: dbEntryForm.value.category,
+          importance: dbEntryForm.value.importance,
+          tags
+        })
+      })
+      const data = await response.json()
+      if (data.status !== 'ok') {
+        alert('添加失败')
+        return
+      }
+    }
+    
+    closeDbEntryModal()
+    await loadDbCategories()
+    await loadDbEntries()
+  } catch (e: any) {
+    alert(`保存失败: ${e.message}`)
+  } finally {
+    savingDb.value = false
+  }
+}
+
+async function deleteDbEntry(entryId: number) {
+  if (!confirm(`确定要删除这条记忆吗？`)) return
+  
+  try {
+    const response = await fetch(`${backendUrl}/api/memories/database/entries/${entryId}`, {
+      method: 'DELETE'
+    })
+    const data = await response.json()
+    if (data.status === 'ok') {
+      await loadDbCategories()
+      await loadDbEntries()
+    } else {
+      alert('删除失败')
+    }
+  } catch (e: any) {
+    alert(`删除失败: ${e.message}`)
+  }
 }
 
 onMounted(() => {
@@ -582,5 +829,153 @@ onMounted(() => {
   text-align: center;
   color: #a6adc8;
   padding: 40px;
+}
+
+/* Database styles */
+.db-modal {
+  width: 900px;
+  height: 700px;
+}
+
+.db-entry-modal {
+  width: 600px;
+}
+
+.db-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.category-select {
+  flex: 1;
+  padding: 8px 12px;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+}
+
+.db-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.db-entry {
+  background: #313244;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.db-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #45475a;
+}
+
+.db-entry-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.db-entry-id {
+  font-weight: 600;
+  color: #89b4fa;
+}
+
+.db-entry-category {
+  background: #89b4fa33;
+  color: #89b4fa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.db-entry-importance {
+  color: #f9e2af;
+  font-size: 0.85rem;
+}
+
+.db-entry-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.db-entry-content {
+  margin: 0;
+  padding: 12px;
+  color: #cdd6f4;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.db-entry-tags {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid #45475a;
+}
+
+.tag {
+  background: #a6e3a133;
+  color: #a6e3a1;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.btn-danger {
+  color: #f38ba8;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  color: #a6adc8;
+  font-size: 0.85rem;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #89b4fa;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-group {
+  flex: 1;
 }
 </style>

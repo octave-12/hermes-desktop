@@ -135,6 +135,142 @@ class MemoryManager:
         
         return entries
     
+    def get_db_entries(self, category: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get entries from SQLite memory database."""
+        import sqlite3
+        import json
+        
+        if not os.path.exists(self.memory_db):
+            return []
+        
+        try:
+            conn = sqlite3.connect(self.memory_db)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            if category:
+                cursor.execute(
+                    "SELECT * FROM memories WHERE category = ? ORDER BY importance DESC, created_at DESC LIMIT ? OFFSET ?",
+                    (category, limit, offset)
+                )
+            else:
+                cursor.execute(
+                    "SELECT * FROM memories ORDER BY importance DESC, created_at DESC LIMIT ? OFFSET ?",
+                    (limit, offset)
+                )
+            
+            rows = cursor.fetchall()
+            entries = []
+            for row in rows:
+                entries.append({
+                    "id": row["id"],
+                    "content": row["content"],
+                    "category": row["category"],
+                    "importance": row["importance"],
+                    "tags": json.loads(row["tags"]) if row["tags"] else [],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"]
+                })
+            
+            conn.close()
+            return entries
+        except Exception as e:
+            print(f"[ERROR] Failed to get db entries: {e}")
+            return []
+    
+    def get_db_categories(self) -> List[Dict]:
+        """Get all categories with count."""
+        import sqlite3
+        
+        if not os.path.exists(self.memory_db):
+            return []
+        
+        try:
+            conn = sqlite3.connect(self.memory_db)
+            cursor = conn.cursor()
+            cursor.execute("SELECT category, COUNT(*) as count FROM memories GROUP BY category ORDER BY count DESC")
+            rows = cursor.fetchall()
+            conn.close()
+            return [{"category": r[0], "count": r[1]} for r in rows]
+        except Exception as e:
+            print(f"[ERROR] Failed to get categories: {e}")
+            return []
+    
+    def add_db_entry(self, content: str, category: str = "general", importance: int = 1, tags: List[str] = None) -> Optional[int]:
+        """Add a new entry to SQLite memory database."""
+        import sqlite3
+        import json
+        
+        try:
+            conn = sqlite3.connect(self.memory_db)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO memories (content, category, importance, tags) VALUES (?, ?, ?, ?)",
+                (content, category, importance, json.dumps(tags or []))
+            )
+            entry_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return entry_id
+        except Exception as e:
+            print(f"[ERROR] Failed to add db entry: {e}")
+            return None
+    
+    def update_db_entry(self, entry_id: int, content: str = None, category: str = None, importance: int = None, tags: List[str] = None) -> bool:
+        """Update an entry in SQLite memory database."""
+        import sqlite3
+        import json
+        
+        try:
+            conn = sqlite3.connect(self.memory_db)
+            cursor = conn.cursor()
+            
+            updates = []
+            params = []
+            
+            if content is not None:
+                updates.append("content = ?")
+                params.append(content)
+            if category is not None:
+                updates.append("category = ?")
+                params.append(category)
+            if importance is not None:
+                updates.append("importance = ?")
+                params.append(importance)
+            if tags is not None:
+                updates.append("tags = ?")
+                params.append(json.dumps(tags))
+            
+            if not updates:
+                conn.close()
+                return False
+            
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(entry_id)
+            
+            cursor.execute(f"UPDATE memories SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to update db entry: {e}")
+            return False
+    
+    def delete_db_entry(self, entry_id: int) -> bool:
+        """Delete an entry from SQLite memory database."""
+        import sqlite3
+        
+        try:
+            conn = sqlite3.connect(self.memory_db)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM memories WHERE id = ?", (entry_id,))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to delete db entry: {e}")
+            return False
+    
     def delete_memory_entry(self, memory_id: str, entry_index: int) -> bool:
         """Delete a single memory entry by index."""
         types = self.get_memory_types()

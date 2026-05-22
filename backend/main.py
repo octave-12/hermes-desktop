@@ -331,6 +331,59 @@ async def delete_memory(memory_id: str):
     return {"status": "ok" if success else "error"}
 
 
+# ── SQLite Database Memory APIs ─────────────────────────────────
+
+@app.get("/api/memories/database/entries")
+async def get_db_entries(category: str = None, limit: int = 100, offset: int = 0):
+    """Get entries from SQLite memory database"""
+    entries = memory_manager.get_db_entries(category, limit, offset)
+    return {"entries": entries}
+
+
+@app.get("/api/memories/database/categories")
+async def get_db_categories():
+    """Get all categories with count"""
+    categories = memory_manager.get_db_categories()
+    return {"categories": categories}
+
+
+@app.post("/api/memories/database/entries")
+async def add_db_entry(request: dict):
+    """Add a new entry to SQLite memory database"""
+    content = request.get("content", "")
+    category = request.get("category", "general")
+    importance = request.get("importance", 1)
+    tags = request.get("tags", [])
+    
+    if not content:
+        return {"error": "Content is required"}
+    
+    entry_id = memory_manager.add_db_entry(content, category, importance, tags)
+    if entry_id:
+        return {"status": "ok", "id": entry_id}
+    return {"error": "Failed to add entry"}
+
+
+@app.put("/api/memories/database/entries/{entry_id}")
+async def update_db_entry(entry_id: int, request: dict):
+    """Update an entry in SQLite memory database"""
+    success = memory_manager.update_db_entry(
+        entry_id,
+        content=request.get("content"),
+        category=request.get("category"),
+        importance=request.get("importance"),
+        tags=request.get("tags")
+    )
+    return {"status": "ok" if success else "error"}
+
+
+@app.delete("/api/memories/database/entries/{entry_id}")
+async def delete_db_entry(entry_id: int):
+    """Delete an entry from SQLite memory database"""
+    success = memory_manager.delete_db_entry(entry_id)
+    return {"status": "ok" if success else "error"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
