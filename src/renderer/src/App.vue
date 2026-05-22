@@ -124,9 +124,7 @@
           </div>
           <div class="model-info" v-if="currentModelName" title="当前模型">
             <span class="model-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
+              <img src="@/assets/horse-running.gif" alt="Horse" class="model-horse-icon" />
             </span>
             <span class="model-name">{{ currentModelName }}</span>
           </div>
@@ -604,6 +602,15 @@ onUnmounted(() => {
 
 .model-icon {
   font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-horse-icon {
+  width: 20px;
+  height: 20px;
+  transform: scaleX(-1);
 }
 
 .model-name {
