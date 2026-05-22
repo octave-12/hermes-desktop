@@ -13,15 +13,12 @@
 
     <!-- Messages -->
     <div v-else class="messages-container" ref="messagesContainer">
-      <RecycleScroller
-        class="scroller"
-        :items="currentSession.messages"
-        :item-size="null"
-        :estimated-item-size="100"
-        key-field="id"
-        v-slot="{ item: msg }"
+      <div
+        v-for="msg in currentSession.messages"
+        :key="msg.id"
+        class="message-row"
+        :class="msg.role"
       >
-          <div class="message-row" :class="msg.role">
             <!-- AI message: avatar left, bubble left -->
             <template v-if="msg.role === 'assistant'">
               <div class="avatar ai-avatar">H</div>
@@ -52,7 +49,6 @@
               <div class="system-msg">{{ msg.content }}</div>
             </template>
           </div>
-      </RecycleScroller>
 
       <!-- Loading indicator -->
       <div v-if="currentSession?.isLoading" class="message-row assistant">
@@ -107,8 +103,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import { RecycleScroller } from 'vue-virtual-scroller'
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 
 declare global {
   interface Window {
@@ -242,10 +236,6 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px 16px;
-}
-
-.scroller {
-  height: 100%;
 }
 
 /* ── Message rows ── */
