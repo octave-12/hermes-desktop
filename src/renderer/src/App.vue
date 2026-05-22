@@ -610,7 +610,6 @@ onUnmounted(() => {
 .model-horse-icon {
   width: 20px;
   height: 20px;
-  transform: scaleX(-1);
 }
 
 .model-name {
