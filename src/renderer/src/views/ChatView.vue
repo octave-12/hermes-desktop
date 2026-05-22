@@ -3,6 +3,20 @@
     <!-- Empty state -->
     <div v-if="!currentSession || currentSession.messages.length === 0" class="empty-state">
       <div class="empty-content">
+        <div class="horse-animation">
+          <svg width="80" height="80" viewBox="0 0 100 100" class="running-horse">
+            <path class="horse-body" d="M70 45 Q75 40 80 45 L85 50 Q82 55 78 55 L70 52 Z" fill="#89b4fa"/>
+            <path class="horse-neck" d="M70 45 Q68 35 72 28 L76 30 Q78 38 75 45 Z" fill="#89b4fa"/>
+            <path class="horse-head" d="M72 28 Q78 25 82 28 L84 32 Q80 35 76 33 Z" fill="#89b4fa"/>
+            <circle cx="80" cy="30" r="2" fill="#1e1e2e"/>
+            <path class="horse-leg-1" d="M72 52 L70 65 L73 65 L75 52" fill="#89b4fa"/>
+            <path class="horse-leg-2" d="M78 52 L82 65 L85 65 L80 52" fill="#89b4fa"/>
+            <path class="horse-leg-3" d="M68 52 L62 68 L65 68 L70 52" fill="#89b4fa"/>
+            <path class="horse-leg-4" d="M74 52 L72 68 L75 68 L78 52" fill="#89b4fa"/>
+            <path class="horse-tail" d="M85 50 Q92 48 95 55 Q93 60 88 58" fill="#89b4fa" stroke="#89b4fa" stroke-width="2"/>
+            <path class="horse-mane" d="M68 35 Q65 32 68 28 Q72 30 70 35 Z" fill="#89b4fa"/>
+          </svg>
+        </div>
         <h2>Hermes Agent</h2>
         <p>开始一段新对话，或从左侧选择历史会话</p>
       </div>
@@ -379,6 +393,61 @@ onMounted(async () => {
 @keyframes bounce {
   0%, 80%, 100% { transform: scale(0.6); }
   40% { transform: scale(1); }
+}
+
+/* ── Horse Animation ── */
+.horse-animation {
+  margin-bottom: 20px;
+}
+
+.running-horse {
+  animation: horseRun 0.6s ease-in-out infinite;
+}
+
+.running-horse .horse-leg-1,
+.running-horse .horse-leg-3 {
+  animation: legFront 0.3s ease-in-out infinite;
+  transform-origin: center top;
+}
+
+.running-horse .horse-leg-2,
+.running-horse .horse-leg-4 {
+  animation: legBack 0.3s ease-in-out infinite;
+  transform-origin: center top;
+}
+
+.running-horse .horse-tail {
+  animation: tailWag 0.4s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.running-horse .horse-mane {
+  animation: maneFlow 0.3s ease-in-out infinite;
+}
+
+@keyframes horseRun {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes legFront {
+  0%, 100% { transform: rotate(-15deg); }
+  50% { transform: rotate(15deg); }
+}
+
+@keyframes legBack {
+  0%, 100% { transform: rotate(15deg); }
+  50% { transform: rotate(-15deg); }
+}
+
+@keyframes tailWag {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+@keyframes maneFlow {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(1.1); }
 }
 
 /* ── Pending queue ── */
