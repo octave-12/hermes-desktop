@@ -16,10 +16,16 @@ class EnvManager:
         self._ensure_env_file()
     
     def _ensure_env_file(self):
-        """Ensure .env file exists"""
+        """Ensure .env file exists with restrictive permissions."""
         self.hermes_dir.mkdir(parents=True, exist_ok=True)
         if not self.env_file.exists():
             self.env_file.touch()
+        # Set restrictive permissions (owner read/write only)
+        try:
+            import stat
+            os.chmod(self.env_file, stat.S_IRUSR | stat.S_IWUSR)
+        except Exception as e:
+            print(f"[WARN] Failed to set .env permissions: {e}")
     
     def read_env(self) -> Dict[str, str]:
         """Read all environment variables from .env file"""

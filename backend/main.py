@@ -336,11 +336,25 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("[WS] Client connected")
 
+    def validate_message(msg: dict, required_fields: list) -> bool:
+        """Validate message has required fields with correct types."""
+        for field in required_fields:
+            if field not in msg:
+                return False
+        return True
+
     try:
         while True:
             data = await websocket.receive_text()
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                continue
+            
             msg_type = message.get("type")
+            if not msg_type or not isinstance(msg_type, str):
+                continue
 
             if msg_type == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
@@ -353,6 +367,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
 
             elif msg_type == "load_messages":
+                if not validate_message(message, ["session_id"]):
+                    continue
                 session_id = message["session_id"]
                 messages = db.get_session_messages(session_id)
                 await websocket.send_text(json.dumps({
