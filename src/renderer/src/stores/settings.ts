@@ -93,9 +93,6 @@ export const useSettingsStore = defineStore('settings', () => {
         const data = await response.json()
         if (data.status === 'ok') {
           config.value.model = modelId
-          if (data.apiBaseUrl) {
-            config.value.apiBaseUrl = data.apiBaseUrl
-          }
           return { 
             success: true, 
             needsApiKey: data.needsApiKey,

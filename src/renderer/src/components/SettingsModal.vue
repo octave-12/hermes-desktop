@@ -312,10 +312,14 @@ async function loadCurrentConfig() {
 
 async function loadModels() {
   try {
+    console.log('[Settings] Loading models...')
     const response = await fetch('http://localhost:8765/api/models')
     if (response.ok) {
       const data = await response.json()
+      console.log('[Settings] Models loaded:', data.models)
       availableModels.value = data.models || []
+    } else {
+      console.error('[Settings] API error:', response.status)
     }
   } catch (error) {
     console.error('[Settings] Failed to load models:', error)
