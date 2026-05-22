@@ -50,12 +50,13 @@ class HermesService:
         """Check if generation is active for a session."""
         return session_id in self._active_tasks
 
-    def _get_agent(self, model_id: str, api_key: str, api_base_url: str) -> Optional['AIAgent']:
+    def _get_agent(self, model_id: str, api_key: str, api_base_url: str, session_id: str = None) -> Optional['AIAgent']:
         """Get or create AIAgent instance for a model."""
         if not HERMES_API_AVAILABLE:
             return None
         
-        cache_key = f"{model_id}:{api_base_url}"
+        # Cache key includes session_id for proper isolation
+        cache_key = f"{model_id}:{api_base_url}:{session_id or 'default'}"
         if cache_key in self._agent_cache:
             return self._agent_cache[cache_key]
         
@@ -64,6 +65,7 @@ class HermesService:
                 model=model_id,
                 api_key=api_key,
                 base_url=api_base_url,
+                session_id=session_id,
             )
             self._agent_cache[cache_key] = agent
             return agent
@@ -123,7 +125,7 @@ class HermesService:
         self, session_id: str, user_message: str, model_id: str, api_key: str, api_base_url: str
     ) -> AsyncGenerator[dict, None]:
         """Chat using Hermes Agent Python API (true streaming)."""
-        agent = self._get_agent(model_id, api_key, api_base_url)
+        agent = self._get_agent(model_id, api_key, api_base_url, session_id)
         if not agent:
             yield {"type": "error", "message": "Failed to initialize Hermes Agent"}
             return
