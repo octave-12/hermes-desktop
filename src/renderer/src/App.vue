@@ -1,6 +1,6 @@
 <template>
   <div id="app-container">
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-header">
         <h1 class="app-title">Hermes</h1>
         <button class="new-chat-btn" @click="createNewSession">+ 新对话</button>
@@ -104,6 +104,12 @@
       </div>
     </aside>
     <main class="main-content">
+      <button class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline v-if="sidebarCollapsed" points="9 18 15 12 9 6"></polyline>
+          <polyline v-else points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
       <router-view />
     </main>
     
@@ -120,6 +126,7 @@ import SettingsModal from '@/components/SettingsModal.vue'
 const chatStore = useChatStore()
 const showSettings = ref(false)
 const currentModelName = ref('')
+const sidebarCollapsed = ref(false)
 
 // Reconnect WebSocket
 function reconnect() {
@@ -260,6 +267,14 @@ onUnmounted(() => {
   border-right: 1px solid #313244;
   display: flex;
   flex-direction: column;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  border-right: none;
+  opacity: 0;
 }
 
 .sidebar-header {
@@ -578,5 +593,29 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: #181825;
+  position: relative;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  background: #313244;
+  border: 1px solid #45475a;
+  color: #89b4fa;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.sidebar-toggle:hover {
+  background: #45475a;
+  color: #b4befe;
 }
 </style>
