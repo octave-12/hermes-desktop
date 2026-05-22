@@ -71,7 +71,6 @@
       <div class="resize-handle" @mousedown="startResize"></div>
       <div class="input-wrapper">
         <textarea
-          ref="inputRef"
           v-model="inputText"
           placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
           @keydown.enter.exact.prevent="handleSend"
@@ -113,7 +112,6 @@ declare global {
 const chatStore = useChatStore()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
-const inputRef = ref<HTMLTextAreaElement>()
 const inputAreaHeight = ref(80)
 const isResizing = ref(false)
 

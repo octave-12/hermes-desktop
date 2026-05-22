@@ -20,11 +20,35 @@
               <span class="session-title">{{ session.title }}</span>
               <span v-if="session.lastAiMessage" class="session-preview">{{ truncateText(session.lastAiMessage, 40) }}</span>
             </div>
-            <button
-              class="delete-btn"
-              @click.stop="chatStore.deleteSession(session.id)"
-              title="删除会话"
-            >×</button>
+            <div class="session-menu">
+              <button
+                class="menu-btn"
+                @click.stop="toggleMenu(session.id)"
+                title="更多"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+              <div v-if="activeMenu === session.id" class="menu-dropdown">
+                <button class="menu-item" @click.stop="startRename(session.id, session.title)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  <span>重命名</span>
+                </button>
+                <button class="menu-item delete" @click.stop="deleteSession(session.id)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                  <span>删除</span>
+                </button>
+              </div>
+            </div>
           </template>
           <!-- Rename input -->
           <template v-else>
@@ -85,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import SettingsModal from '@/components/SettingsModal.vue'
 
@@ -149,7 +173,6 @@ onMounted(async () => {
 })
 
 // Watch settings modal close to refresh model name
-import { watch } from 'vue'
 watch(showSettings, async (newVal) => {
   if (!newVal) {
     // Modal closed, refresh model name
@@ -160,12 +183,23 @@ watch(showSettings, async (newVal) => {
 const renamingId = ref<string | null>(null)
 const renameText = ref('')
 const renameInputRef = ref<HTMLInputElement[]>()
+const activeMenu = ref<string | null>(null)
 
 function createNewSession() {
   chatStore.createSession()
 }
 
+function toggleMenu(sessionId: string) {
+  activeMenu.value = activeMenu.value === sessionId ? null : sessionId
+}
+
+function deleteSession(sessionId: string) {
+  chatStore.deleteSession(sessionId)
+  activeMenu.value = null
+}
+
 function startRename(id: string, currentTitle: string) {
+  activeMenu.value = null
   renamingId.value = id
   renameText.value = currentTitle
   nextTick(() => {
@@ -193,6 +227,21 @@ function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   return text.substring(0, maxLength) + '...'
 }
+
+// Close menu when clicking outside
+function handleClickOutside(e: MouseEvent) {
+  if (activeMenu.value && !(e.target as HTMLElement).closest('.session-menu')) {
+    activeMenu.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
@@ -282,26 +331,74 @@ function truncateText(text: string, maxLength: number): string {
   line-height: 1.4;
 }
 
-.delete-btn {
+.session-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu-btn {
   display: none;
   background: none;
   border: none;
   color: #6c7086;
   cursor: pointer;
-  font-size: 1rem;
-  padding: 0 4px;
-  line-height: 1;
+  padding: 4px;
   border-radius: 4px;
-  flex-shrink: 0;
+  line-height: 0;
 }
 
-.delete-btn:hover {
+.session-item:hover .menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-btn:hover {
+  color: #cdd6f4;
+  background: #45475a;
+}
+
+.menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  min-width: 120px;
+  padding: 4px;
+  margin-top: 4px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  color: #a6adc8;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: #45475a;
+  color: #cdd6f4;
+}
+
+.menu-item.delete {
   color: #f38ba8;
-  background: #f38ba822;
 }
 
-.session-item:hover .delete-btn {
-  display: block;
+.menu-item.delete:hover {
+  background: #f38ba822;
+  color: #f38ba8;
 }
 
 .rename-input {
