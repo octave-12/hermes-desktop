@@ -112,7 +112,7 @@ declare global {
 const chatStore = useChatStore()
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
-const inputAreaHeight = ref(80)
+const inputAreaHeight = ref(120)
 const isResizing = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
