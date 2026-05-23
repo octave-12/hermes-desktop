@@ -37,7 +37,7 @@ class ModelConfigManager:
             self.hermes_dir.mkdir(parents=True, exist_ok=True)
             default_config = {
                 'model': {
-                    'default': 'deepseek-chat'
+                    'default': 'deepseek-v4-flash'
                 },
                 'models': {}
             }
@@ -218,7 +218,7 @@ class ModelConfigManager:
             if 'provider' in model_config:
                 return model_config['provider']
         
-        return 'deepseek-chat'
+        return 'deepseek-v4-flash'
 
 
 model_config_manager = ModelConfigManager()

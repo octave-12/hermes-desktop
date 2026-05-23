@@ -250,4 +250,4 @@ def get_hermes_default_model() -> str:
         print(f"[Config] Failed to read Hermes config: {e}")
     
     # Fallback to default
-    return "deepseek-chat"
+    return "deepseek-v4-flash"

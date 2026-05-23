@@ -127,7 +127,7 @@ class HermesService:
                 else:
                     model = model_config_manager.get_model_config(configured_model_id)
             
-            model_id = model.get('id', 'deepseek-chat') if model else 'deepseek-chat'
+            model_id = model.get('id', 'deepseek-v4-flash') if model else 'deepseek-v4-flash'
             api_key_env = model.get('api_key_env') if model else None
             
             api_key = env_manager.get_api_key(model_id, api_key_env)
