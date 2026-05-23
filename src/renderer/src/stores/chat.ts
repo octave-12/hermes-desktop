@@ -366,6 +366,20 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
       }
+      case 'user_message': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) {
+          // Add user message to chat when processing from queue
+          session.messages.push({
+            id: data.message_id,
+            role: 'user',
+            content: data.content,
+            timestamp: Date.now()
+          })
+          session.isLoading = true
+        }
+        break
+      }
       case 'tool_call': {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (!session) break
@@ -436,9 +450,6 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // Support multiple sessions generating simultaneously
-    // Don't check session.isLoading - allow parallel generation
-
     const message: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -446,18 +457,41 @@ export const useChatStore = defineStore('chat', () => {
       timestamp: Date.now()
     }
 
-    session.messages.push(message)
-    session.isLoading = true
-
-    // Send with message_id so backend can persist it
-    ws.value.send(
-      JSON.stringify({
-        type: 'chat',
-        session_id: currentSessionId.value,
-        message_id: message.id,
-        content
+    // If already loading, add to queue only (not in messages yet)
+    if (session.isLoading) {
+      // Initialize queue items if not exists
+      if (!session.queueItems) {
+        session.queueItems = []
+      }
+      session.queueItems.push({
+        user_msg_id: message.id,
+        content_preview: trimmedContent.substring(0, 50)
       })
-    )
+      
+      // Send to backend but don't add to messages yet
+      ws.value.send(
+        JSON.stringify({
+          type: 'chat',
+          session_id: currentSessionId.value,
+          message_id: message.id,
+          content
+        })
+      )
+    } else {
+      // Not loading, add to messages and send
+      session.messages.push(message)
+      session.isLoading = true
+      
+      // Send with message_id so backend can persist it
+      ws.value.send(
+        JSON.stringify({
+          type: 'chat',
+          session_id: currentSessionId.value,
+          message_id: message.id,
+          content
+        })
+      )
+    }
   }
 
   // ── Process pending messages ───────────────────────────────

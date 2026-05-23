@@ -4,6 +4,7 @@ Runs in WSL, communicates with Electron frontend via WebSocket
 """
 import json
 import uuid
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -586,13 +587,36 @@ async def websocket_endpoint(websocket: WebSocket):
             content, user_msg_id = queue.pop(0)
             
             try:
+                # Notify client to display user message
+                await websocket.send_text(json.dumps({
+                    "type": "user_message",
+                    "session_id": session_id,
+                    "message_id": user_msg_id,
+                    "content": content
+                }))
+                
+                # Notify client about remaining queue (after removing current message)
+                remaining = len(queue)
+                if remaining > 0:
+                    await websocket.send_text(json.dumps({
+                        "type": "queue_updated",
+                        "session_id": session_id,
+                        "queue_length": remaining,
+                        "queue_items": [
+                            {"user_msg_id": msg_id, "content_preview": c[:50]}
+                            for c, msg_id in queue
+                        ]
+                    }))
+                
                 async for chunk in hermes_service.chat(session_id, content, user_msg_id):
                     chunk["session_id"] = session_id
                     await websocket.send_text(json.dumps(chunk))
                 
                 await websocket.send_text(json.dumps({"type": "message_done", "session_id": session_id}))
+                
             except Exception as e:
-                print(f"[WS] Chat error: {e}")
+                import traceback
+                traceback.print_exc()
                 await websocket.send_text(json.dumps({
                     "type": "error",
                     "session_id": session_id,
@@ -643,44 +667,57 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def enqueue_message(session_id: str, content: str, user_msg_id: str):
         """Add message to session queue and start processing if not already active."""
-        # Initialize queue if needed
-        if session_id not in session_queues:
-            session_queues[session_id] = []
-        
-        # Add message to queue
-        session_queues[session_id].append((content, user_msg_id))
-        
-        # Notify client about queue status
-        queue_length = len(session_queues[session_id])
-        await websocket.send_text(json.dumps({
-            "type": "queue_updated",
-            "session_id": session_id,
-            "queue_length": queue_length,
-            "queue_items": [
-                {"user_msg_id": msg_id, "content_preview": content[:50]}
-                for content, msg_id in session_queues[session_id]
-            ]
-        }))
-        
-        # Check if session is already active
-        if session_id in active_chats:
-            return  # Already processing, message will be handled in queue
-        
-        # Check concurrent limit
-        if len(active_chats) >= MAX_CONCURRENT_SESSIONS:
-            # Add to waiting queue
-            if session_id not in waiting_sessions:
-                waiting_sessions.append(session_id)
+        try:
+            # Initialize queue if needed
+            if session_id not in session_queues:
+                session_queues[session_id] = []
+            
+            # Add message to queue
+            session_queues[session_id].append((content, user_msg_id))
+            queue_length = len(session_queues[session_id])
+            
+            # Only notify client if queue has multiple messages (backlog)
+            if queue_length > 1:
                 await websocket.send_text(json.dumps({
-                    "type": "session_waiting",
+                    "type": "queue_updated",
                     "session_id": session_id,
-                    "reason": f"并发会话数已达上限 ({MAX_CONCURRENT_SESSIONS})，等待中..."
+                    "queue_length": queue_length,
+                    "queue_items": [
+                        {"user_msg_id": msg_id, "content_preview": content[:50]}
+                        for content, msg_id in session_queues[session_id]
+                    ]
                 }))
-            return
-        
-        # Start processing
-        task = asyncio.create_task(process_session_queue(session_id))
-        active_chats[session_id] = task
+            
+            # Check if session is already active
+            if session_id in active_chats:
+                return  # Already processing, message will be handled in queue
+            
+            # Check concurrent limit
+            if len(active_chats) >= MAX_CONCURRENT_SESSIONS:
+                # Add to waiting queue
+                if session_id not in waiting_sessions:
+                    waiting_sessions.append(session_id)
+                    await websocket.send_text(json.dumps({
+                        "type": "session_waiting",
+                        "session_id": session_id,
+                        "reason": f"并发会话数已达上限 ({MAX_CONCURRENT_SESSIONS})，等待中..."
+                    }))
+                return
+            
+            # Start processing
+            task = asyncio.create_task(process_session_queue(session_id))
+            active_chats[session_id] = task
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            try:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "session_id": session_id,
+                    "message": f"Failed to enqueue message: {str(e)}"
+                }))
+            except:
+                pass
 
     try:
         while True:

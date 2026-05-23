@@ -2,6 +2,10 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
+// 设置 userData 路径到项目 out 目录（缓存数据）
+const customUserDataPath = process.env.HERMES_DATA_DIR || join(__dirname, '../../out/electron-data')
+app.setPath('userData', customUserDataPath)
+
 // 单例锁：防止同时运行多个实例
 const gotTheLock = app.requestSingleInstanceLock()
 
