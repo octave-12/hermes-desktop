@@ -86,8 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const deepseekSettings = ref<DeepSeekSettings>({
     thinking: false,
-    reasoningEffort: 'medium',
-    expertMode: false
+    reasoningEffort: 'medium'
   })
 
   async function loadDeepSeekSettings(): Promise<DeepSeekSettings> {
@@ -97,8 +96,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const data = await response.json()
         deepseekSettings.value = {
           thinking: data.thinking === true,
-          reasoningEffort: data.reasoningEffort || 'medium',
-          expertMode: data.expertMode === true
+          reasoningEffort: data.reasoningEffort || 'medium'
         }
         return deepseekSettings.value
       }
