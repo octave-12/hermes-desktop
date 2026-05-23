@@ -142,8 +142,29 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // ── Reconnect ────────────────────────────────────────────
+  const MAX_RECONNECT_ATTEMPTS = 10
+
   function scheduleReconnect() {
     if (reconnectTimer) return
+    
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('[WS] Max reconnect attempts reached, giving up')
+      isReconnecting.value = false
+      
+      // Notify user
+      sessions.value.forEach(session => {
+        if (session.messages.length > 0) {
+          session.messages.push({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: '无法连接到服务器，请检查网络或重启应用。',
+            timestamp: Date.now()
+          })
+        }
+      })
+      return
+    }
+    
     isReconnecting.value = true
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY)
     reconnectTimer = setTimeout(() => {
@@ -380,13 +401,8 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // If AI is currently responding, add to pending queue
-    if (session.isLoading) {
-      const queue = pendingMessages.value.get(session.id) || []
-      queue.push(trimmedContent)
-      pendingMessages.value.set(session.id, queue)
-      return
-    }
+    // Support multiple sessions generating simultaneously
+    // Don't check session.isLoading - allow parallel generation
 
     const message: Message = {
       id: crypto.randomUUID(),

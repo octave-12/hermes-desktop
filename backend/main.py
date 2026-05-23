@@ -411,11 +411,24 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("[WS] Client connected")
 
-    def validate_message(msg: dict, required_fields: list) -> bool:
-        """Validate message has required fields with correct types."""
+    def validate_message(msg: dict, required_fields: list, max_size: int = 10000) -> bool:
+        """Validate message has required fields with correct types and size."""
+        # Check message size
+        try:
+            msg_str = json.dumps(msg)
+            if len(msg_str) > max_size:
+                return False
+        except:
+            return False
+        
+        # Check required fields
         for field in required_fields:
             if field not in msg:
                 return False
+            # Check field types
+            if field in ['session_id', 'content', 'title'] and not isinstance(msg[field], str):
+                return False
+        
         return True
 
     try:
