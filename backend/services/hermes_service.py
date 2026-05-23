@@ -111,21 +111,8 @@ class HermesService:
                 yield {"type": "session_title", "session_id": session_id, "title": title}
 
             # Get model configuration
-            # Check if expert mode is enabled (DeepSeek V4 Pro vs Flash)
-            deepseek_expert_mode = db.get_config("deepseek_expert_mode", "false")
             configured_model_id = db.get_config("model", db.get_hermes_default_model())
-            
-            # If expert mode is on, automatically use v4-pro
-            if deepseek_expert_mode == "true":
-                model = model_config_manager.get_model_config("deepseek-v4-pro")
-                if not model:
-                    model = model_config_manager.get_model_config(configured_model_id)
-            else:
-                # If currently on deepseek-chat, stick with it; otherwise use v4-flash as default
-                if configured_model_id in ("deepseek-v4-pro", "deepseek-v4-flash"):
-                    model = model_config_manager.get_model_config("deepseek-v4-flash")
-                else:
-                    model = model_config_manager.get_model_config(configured_model_id)
+            model = model_config_manager.get_model_config(configured_model_id)
             
             model_id = model.get('id', 'deepseek-v4-flash') if model else 'deepseek-v4-flash'
             api_key_env = model.get('api_key_env') if model else None

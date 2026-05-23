@@ -90,28 +90,8 @@
           </button>
           
           <div v-if="showAdvanced" class="advanced-settings">
-            <!-- DeepSeek 高级设置 -->
-            <div class="setting-group" v-if="isDeepSeekModel">
-              <label class="setting-label">模式选择</label>
-              <div class="button-group">
-                <button 
-                  class="btn-effort"
-                  :class="{ active: !localDeepSeekSettings.expertMode }"
-                  @click="localDeepSeekSettings.expertMode = false"
-                >
-                  ⚡ 快速模式 (v4-flash)
-                </button>
-                <button 
-                  class="btn-effort"
-                  :class="{ active: localDeepSeekSettings.expertMode }"
-                  @click="localDeepSeekSettings.expertMode = true"
-                >
-                  🎯 专家模式 (v4-pro)
-                </button>
-              </div>
-            </div>
-
-            <div class="setting-group" v-if="isDeepSeekModel">
+            <!-- DeepSeek V4 深度思考设置 -->
+            <div class="setting-group" v-if="isDeepSeekV4Model">
               <label class="setting-label">深度思考</label>
               <div class="toggle-row">
                 <label class="switch">
@@ -120,10 +100,10 @@
                 </label>
                 <span class="toggle-label">{{ localDeepSeekSettings.thinking ? '已开启' : '已关闭' }}</span>
               </div>
-              <p class="setting-hint">启用 DeepSeek 的深度思考模式（thinking）</p>
+              <p class="setting-hint">启用 DeepSeek V4 的深度思考模式（thinking）</p>
             </div>
             
-            <div class="setting-group" v-if="localDeepSeekSettings.thinking">
+            <div class="setting-group" v-if="isDeepSeekV4Model && localDeepSeekSettings.thinking">
               <label class="setting-label">推理努力</label>
               <div class="button-group">
                 <button 
@@ -315,11 +295,10 @@ const showAdvanced = ref(false)
 const addingModel = ref(false)
 const localDeepSeekSettings = ref<DeepSeekSettings>({
   thinking: false,
-  reasoningEffort: 'medium',
-  expertMode: false
+  reasoningEffort: 'medium'
 })
-const isDeepSeekModel = computed(() => {
-  return localConfig.value.provider === 'deepseek'
+const isDeepSeekV4Model = computed(() => {
+  return localConfig.value.model.startsWith('deepseek-v4')
 })
 const newModel = ref({
   id: '',

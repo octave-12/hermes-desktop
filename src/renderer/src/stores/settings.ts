@@ -23,7 +23,6 @@ export interface ModelConfig {
 export interface DeepSeekSettings {
   thinking: boolean
   reasoningEffort: 'low' | 'medium' | 'high'
-  expertMode: boolean
 }
 
 export const useSettingsStore = defineStore('settings', () => {

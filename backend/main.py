@@ -94,7 +94,6 @@ async def get_deepseek_settings():
     return {
         "thinking": db.get_config("deepseek_thinking", "false") == "true",
         "reasoningEffort": db.get_config("deepseek_reasoning_effort", "medium"),
-        "expertMode": db.get_config("deepseek_expert_mode", "false") == "true",
     }
 
 
@@ -102,11 +101,9 @@ async def get_deepseek_settings():
 async def update_deepseek_settings(request: dict):
     """Update DeepSeek thinking/reasoning settings."""
     if "thinking" in request:
-        db.set_config("deepseek_thinking", str(request["thinking"]))
+        db.set_config("deepseek_thinking", str(request["thinking"]).lower())
     if "reasoningEffort" in request:
         db.set_config("deepseek_reasoning_effort", str(request["reasoningEffort"]))
-    if "expertMode" in request:
-        db.set_config("deepseek_expert_mode", str(request["expertMode"]))
     return {"status": "ok"}
 
 
