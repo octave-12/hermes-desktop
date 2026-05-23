@@ -54,8 +54,24 @@ def init_db():
                 value   TEXT NOT NULL
             );
 
+            -- Indexes for performance optimization
+            
+            -- Sessions table indexes
+            CREATE INDEX IF NOT EXISTS idx_sessions_created_at
+                ON sessions(created_at DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_sessions_hermes_sid
+                ON sessions(hermes_session_id);
+            
+            -- Messages table indexes
             CREATE INDEX IF NOT EXISTS idx_messages_session
                 ON messages(session_id, timestamp);
+            
+            CREATE INDEX IF NOT EXISTS idx_messages_session_role
+                ON messages(session_id, role);
+            
+            CREATE INDEX IF NOT EXISTS idx_messages_timestamp
+                ON messages(timestamp);
         """)
         # Migration: add hermes_session_id column if missing
         try:
