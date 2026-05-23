@@ -104,23 +104,16 @@
             </div>
             
             <div class="setting-group" v-if="isDeepSeekV4Model && localDeepSeekSettings.thinking">
-              <label class="setting-label">推理努力程度</label>
-              <div class="button-group">
-                <button 
-                  class="btn-effort"
-                  :class="{ active: localDeepSeekSettings.reasoningEffort === 'high' }"
-                  @click="localDeepSeekSettings.reasoningEffort = 'high'"
-                >
-                  高（默认）
-                </button>
-                <button 
-                  class="btn-effort"
-                  :class="{ active: localDeepSeekSettings.reasoningEffort === 'max' }"
-                  @click="localDeepSeekSettings.reasoningEffort = 'max'"
-                >
-                  最高
-                </button>
-              </div>
+              <label class="setting-label">推理努力程度: {{ localDeepSeekSettings.reasoningEffort === 'high' ? '高' : '最高' }}</label>
+              <input
+                :value="localDeepSeekSettings.reasoningEffort === 'high' ? 0 : 1"
+                @input="localDeepSeekSettings.reasoningEffort = ($event.target as HTMLInputElement).value === '0' ? 'high' : 'max'"
+                type="range"
+                min="0"
+                max="1"
+                step="1"
+                class="setting-range"
+              />
               <p class="setting-hint">复杂 Agent 任务建议使用最高级别</p>
             </div>
 
@@ -240,6 +233,7 @@
               <option value="deepseek">DeepSeek</option>
               <option value="anthropic">Anthropic</option>
               <option value="openrouter">OpenRouter</option>
+              <option value="xiaomi">Xiaomi</option>
             </select>
           </div>
           <div class="setting-group">
@@ -589,30 +583,34 @@ onMounted(async () => {
 
 .tab-nav {
   display: flex;
-  gap: 8px;
-  padding: 12px 20px;
+  padding: 0;
   border-bottom: 1px solid #313244;
+  background: #1e1e2e;
+  gap: 0;
 }
 
 .tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  background: #313244;
+  padding: 10px 24px;
+  background: #181825;
   border: none;
-  border-radius: 8px;
-  color: #a6adc8;
+  border-bottom: 2px solid transparent;
+  color: #6c7086;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
+  white-space: nowrap;
 }
 
 .tab-btn:hover {
-  background: #45475a;
+  background: #1e1e2e;
+  color: #cdd6f4;
 }
 
 .tab-btn.active {
-  background: #89b4fa;
-  color: #1e1e2e;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-bottom-color: #89b4fa;
 }
 
 .model-selector-modal {
