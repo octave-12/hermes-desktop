@@ -195,6 +195,8 @@ class HermesService:
                 # Check timeout
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout_seconds:
+                    # Stop background task
+                    done_event.set()
                     # Persist partial content on timeout
                     if full_content:
                         assistant_msg_id = str(uuid.uuid4())
@@ -275,7 +277,19 @@ class HermesService:
                 # Check timeout
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout_seconds:
+                    # Clean up process properly
                     process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        await process.wait()
+                    # Persist partial content on timeout
+                    if content_lines:
+                        full_content = "".join(content_lines).strip()
+                        if full_content:
+                            assistant_msg_id = str(uuid.uuid4())
+                            db.add_message(assistant_msg_id, session_id, "assistant", full_content + "\n\n[超时中断]")
                     yield {"type": "error", "message": f"Timeout after {timeout_seconds} seconds"}
                     return
                 
