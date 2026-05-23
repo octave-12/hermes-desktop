@@ -547,6 +547,12 @@ async def delete_table_row(table_name: str, row_id: str):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("[WS] Client connected")
+    
+    # Active chat tasks and message queues per session
+    active_chats = {}
+    session_queues = {}  # session_id -> message queue
+    waiting_sessions = []  # Sessions waiting for concurrent slot
+    MAX_CONCURRENT_SESSIONS = 10
 
     def validate_message(msg: dict, required_fields: list, max_size: int = 10000) -> bool:
         """Validate message has required fields with correct types and size."""
@@ -567,6 +573,114 @@ async def websocket_endpoint(websocket: WebSocket):
                 return False
         
         return True
+
+    async def process_session_queue(session_id: str):
+        """Process messages in session queue sequentially."""
+        if session_id not in session_queues:
+            return
+        
+        queue = session_queues[session_id]
+        
+        while queue:
+            # Get next message from queue
+            content, user_msg_id = queue.pop(0)
+            
+            try:
+                async for chunk in hermes_service.chat(session_id, content, user_msg_id):
+                    chunk["session_id"] = session_id
+                    await websocket.send_text(json.dumps(chunk))
+                
+                await websocket.send_text(json.dumps({"type": "message_done", "session_id": session_id}))
+            except Exception as e:
+                print(f"[WS] Chat error: {e}")
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "session_id": session_id,
+                    "message": str(e)
+                }))
+        
+        # Remove from active chats when queue is empty
+        if session_id in active_chats:
+            del active_chats[session_id]
+        
+        # Notify queue is empty
+        await websocket.send_text(json.dumps({
+            "type": "queue_updated",
+            "session_id": session_id,
+            "queue_length": 0,
+            "queue_items": []
+        }))
+        
+        # Start next waiting session if any
+        if waiting_sessions:
+            next_session_id = waiting_sessions.pop(0)
+            if next_session_id in session_queues and session_queues[next_session_id]:
+                task = asyncio.create_task(process_session_queue(next_session_id))
+                active_chats[next_session_id] = task
+
+    async def remove_from_queue(session_id: str, user_msg_id: str):
+        """Remove a message from session queue."""
+        if session_id not in session_queues:
+            return
+        
+        # Find and remove the message
+        for i, (content, msg_id) in enumerate(session_queues[session_id]):
+            if msg_id == user_msg_id:
+                session_queues[session_id].pop(i)
+                break
+        
+        # Notify client about updated queue
+        queue_length = len(session_queues[session_id])
+        await websocket.send_text(json.dumps({
+            "type": "queue_updated",
+            "session_id": session_id,
+            "queue_length": queue_length,
+            "queue_items": [
+                {"user_msg_id": msg_id, "content_preview": content[:50]}
+                for content, msg_id in session_queues[session_id]
+            ]
+        }))
+
+    async def enqueue_message(session_id: str, content: str, user_msg_id: str):
+        """Add message to session queue and start processing if not already active."""
+        # Initialize queue if needed
+        if session_id not in session_queues:
+            session_queues[session_id] = []
+        
+        # Add message to queue
+        session_queues[session_id].append((content, user_msg_id))
+        
+        # Notify client about queue status
+        queue_length = len(session_queues[session_id])
+        await websocket.send_text(json.dumps({
+            "type": "queue_updated",
+            "session_id": session_id,
+            "queue_length": queue_length,
+            "queue_items": [
+                {"user_msg_id": msg_id, "content_preview": content[:50]}
+                for content, msg_id in session_queues[session_id]
+            ]
+        }))
+        
+        # Check if session is already active
+        if session_id in active_chats:
+            return  # Already processing, message will be handled in queue
+        
+        # Check concurrent limit
+        if len(active_chats) >= MAX_CONCURRENT_SESSIONS:
+            # Add to waiting queue
+            if session_id not in waiting_sessions:
+                waiting_sessions.append(session_id)
+                await websocket.send_text(json.dumps({
+                    "type": "session_waiting",
+                    "session_id": session_id,
+                    "reason": f"并发会话数已达上限 ({MAX_CONCURRENT_SESSIONS})，等待中..."
+                }))
+            return
+        
+        # Start processing
+        task = asyncio.create_task(process_session_queue(session_id))
+        active_chats[session_id] = task
 
     try:
         while True:
@@ -643,6 +757,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     "session_id": session_id,
                 }))
 
+            elif msg_type == "remove_from_queue":
+                if not validate_message(message, ["session_id", "user_msg_id"]):
+                    continue
+                session_id = message["session_id"]
+                user_msg_id = message["user_msg_id"]
+                await remove_from_queue(session_id, user_msg_id)
+
             elif msg_type == "chat":
                 if not validate_message(message, ["content"]):
                     continue
@@ -650,11 +771,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 content = message["content"]
                 user_msg_id = message.get("message_id", str(uuid.uuid4()))
 
-                async for chunk in hermes_service.chat(session_id, content, user_msg_id):
-                    chunk["session_id"] = session_id
-                    await websocket.send_text(json.dumps(chunk))
-
-                await websocket.send_text(json.dumps({"type": "message_done", "session_id": session_id}))
+                # Enqueue message (non-blocking)
+                await enqueue_message(session_id, content, user_msg_id)
 
     except WebSocketDisconnect:
         print("[WS] Client disconnected")
@@ -666,6 +784,10 @@ async def websocket_endpoint(websocket: WebSocket):
             )
         except Exception:
             pass
+    finally:
+        # Cancel all active chats
+        for task in active_chats.values():
+            task.cancel()
 
 
 if __name__ == "__main__":

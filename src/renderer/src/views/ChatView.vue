@@ -62,10 +62,27 @@
     </div>
 
     <!-- Pending messages queue -->
-    <div v-if="pendingCount > 0" class="pending-queue">
+    <div v-if="currentSession?.queueItems && currentSession.queueItems.length > 0" class="pending-queue">
       <div class="pending-header">
         <span class="pending-icon">⏳</span>
-        <span>待执行消息: {{ pendingCount }} 条</span>
+        <span>任务队列: {{ currentSession.queueItems.length }} 条</span>
+      </div>
+      <div class="queue-items">
+        <div 
+          v-for="(item, index) in currentSession.queueItems" 
+          :key="item.user_msg_id"
+          class="queue-item"
+        >
+          <span class="queue-index">{{ index + 1 }}.</span>
+          <span class="queue-preview">{{ item.content_preview }}...</span>
+          <button 
+            class="queue-remove-btn"
+            @click="removeQueueItem(item.user_msg_id)"
+            title="删除"
+          >
+            ×
+          </button>
+        </div>
       </div>
     </div>
 
@@ -149,7 +166,13 @@ function handleSend() {
 
   chatStore.sendMessage(text)
   inputText.value = ''
-  scrollToBottom()
+  nextTick(() => scrollToBottom())
+}
+
+function removeQueueItem(userMsgId: string) {
+  if (currentSession.value) {
+    chatStore.removeFromQueue(currentSession.value.id, userMsgId)
+  }
 }
 
 function handleSendOrStop() {
@@ -422,6 +445,51 @@ onMounted(async () => {
 
 .pending-icon {
   font-size: 1rem;
+}
+
+.queue-items {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #313244;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #a6adc8;
+}
+
+.queue-index {
+  color: #6c7086;
+  font-weight: 500;
+}
+
+.queue-preview {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-remove-btn {
+  background: transparent;
+  border: none;
+  color: #f38ba8;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.queue-remove-btn:hover {
+  background: #f38ba822;
+  border-radius: 4px;
 }
 
 /* ── Input area ── */

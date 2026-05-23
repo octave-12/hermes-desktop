@@ -16,6 +16,11 @@ export interface ToolCall {
   status: 'running' | 'done' | 'error'
 }
 
+export interface QueueItem {
+  user_msg_id: string
+  content_preview: string
+}
+
 export interface Session {
   id: string
   title: string
@@ -23,6 +28,8 @@ export interface Session {
   createdAt: number
   lastAiMessage?: string
   isLoading?: boolean
+  queueItems?: QueueItem[]
+  needsReload?: boolean
 }
 
 export const useChatStore = defineStore('chat', () => {
@@ -119,7 +126,7 @@ export const useChatStore = defineStore('chat', () => {
 
   // ── Heartbeat ────────────────────────────────────────────
   let lastPongTime = 0
-  const PONG_TIMEOUT = 30000 // 30 seconds
+  const PONG_TIMEOUT = 60000 // 60 seconds (increased from 30s)
 
   function startHeartbeat() {
     stopHeartbeat()
@@ -328,7 +335,34 @@ export const useChatStore = defineStore('chat', () => {
             // Set a flag to reload messages when user switches back
             session.needsReload = true
           }
-          processPendingMessages(session.id)
+        }
+        break
+      }
+      case 'message_queued': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) {
+          session.isLoading = true
+        }
+        break
+      }
+      case 'session_waiting': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) {
+          session.isLoading = true
+          session.messages.push({
+            id: crypto.randomUUID(),
+            role: 'system',
+            content: data.reason || '等待并发槽位...',
+            timestamp: Date.now()
+          })
+        }
+        break
+      }
+      case 'queue_updated': {
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) {
+          session.queueItems = data.queue_items || []
+          session.isLoading = data.queue_length > 0
         }
         break
       }
@@ -452,6 +486,11 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // ── Remove from queue ───────────────────────────────────────
+  function removeFromQueue(sessionId: string, userMsgId: string) {
+    wsSend({ type: 'remove_from_queue', session_id: sessionId, user_msg_id: userMsgId })
+  }
+
   function disconnect() {
     stopHeartbeat()
     isReconnecting.value = false
@@ -484,6 +523,7 @@ export const useChatStore = defineStore('chat', () => {
     renameSession,
     sendMessage,
     stopGeneration,
+    removeFromQueue,
     connectWebSocket,
     disconnect
   }

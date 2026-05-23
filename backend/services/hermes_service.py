@@ -200,6 +200,7 @@ class HermesService:
         async def run_agent():
             """Run agent in thread pool."""
             try:
+                print(f"[DEBUG] Starting agent.run_conversation for model: {model_id}")
                 result = await loop.run_in_executor(
                     None,
                     lambda: agent.run_conversation(
@@ -208,7 +209,11 @@ class HermesService:
                         stream_callback=stream_callback,
                     )
                 )
+                print(f"[DEBUG] Agent.run_conversation completed, result type: {type(result)}")
             except Exception as e:
+                print(f"[ERROR] Agent.run_conversation failed: {e}")
+                import traceback
+                traceback.print_exc()
                 await queue.put(f"__ERROR__:{str(e)}")
             finally:
                 done_event.set()
@@ -218,7 +223,7 @@ class HermesService:
         
         # Stream deltas from queue
         full_content = ""
-        timeout_seconds = 120  # 2 minutes timeout
+        timeout_seconds = 300  # 5 minutes timeout
         start_time = asyncio.get_event_loop().time()
         
         try:
