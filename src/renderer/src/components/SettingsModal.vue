@@ -111,7 +111,7 @@
                   :key="effort"
                   class="btn-effort"
                   :class="{ active: localDeepSeekSettings.reasoningEffort === effort }"
-                  @click="localDeepSeekSettings.reasoningEffort = effort"
+                  @click="localDeepSeekSettings.reasoningEffort = effort as 'low' | 'medium' | 'high'"
                 >
                   {{ effort === 'low' ? '低' : effort === 'medium' ? '中' : '高' }}
                 </button>
