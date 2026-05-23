@@ -213,6 +213,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { fetchWithAuth } from '@/utils/api'
 
 interface Memory {
   id: string
@@ -311,7 +312,7 @@ async function loadMemories() {
   loading.value = true
   error.value = ''
   try {
-    const response = await fetch(`${backendUrl}/api/memories`)
+    const response = await fetchWithAuth(`api/memories`)
     const data = await response.json()
     memories.value = data.memories
   } catch (e: any) {
@@ -333,7 +334,7 @@ async function viewMemory(memory: Memory) {
   memoryEntries.value = []
   
   try {
-    const response = await fetch(`${backendUrl}/api/memories/${memory.id}/entries`)
+    const response = await fetchWithAuth(`api/memories/${memory.id}/entries`)
     const data = await response.json()
     memoryEntries.value = data.entries || []
   } catch (e: any) {
@@ -350,7 +351,7 @@ async function editMemory(memory: Memory) {
   editContent.value = ''
   
   try {
-    const response = await fetch(`${backendUrl}/api/memories/${memory.id}`)
+    const response = await fetchWithAuth(`api/memories/${memory.id}`)
     const data = await response.json()
     editContent.value = data.content || ''
   } catch (e: any) {
@@ -366,7 +367,7 @@ async function deleteEntry(entryIndex: number) {
   
   try {
     const response = await fetch(
-      `${backendUrl}/api/memories/${selectedMemory.value.id}/entries/${entryIndex}`,
+      `api/memories/${selectedMemory.value.id}/entries/${entryIndex}`,
       { method: 'DELETE' }
     )
     const data = await response.json()
@@ -384,7 +385,7 @@ async function confirmDeleteAll(memory: Memory) {
   if (!confirm(`确定要清空 ${memory.name} 的所有内容吗？此操作不可恢复。`)) return
   
   try {
-    const response = await fetch(`${backendUrl}/api/memories/${memory.id}`, {
+    const response = await fetchWithAuth(`api/memories/${memory.id}`, {
       method: 'DELETE'
     })
     const data = await response.json()
@@ -403,7 +404,7 @@ async function saveMemory() {
   
   saving.value = true
   try {
-    const response = await fetch(`${backendUrl}/api/memories/${selectedMemory.value.id}`, {
+    const response = await fetchWithAuth(`api/memories/${selectedMemory.value.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: editContent.value })
@@ -442,7 +443,7 @@ async function viewDatabase() {
 
 async function loadDbCategories() {
   try {
-    const response = await fetch(`${backendUrl}/api/memories/database/categories`)
+    const response = await fetchWithAuth(`api/memories/database/categories`)
     const data = await response.json()
     dbCategories.value = data.categories || []
   } catch (e: any) {
@@ -454,8 +455,8 @@ async function loadDbEntries() {
   loadingDb.value = true
   try {
     const url = selectedCategory.value
-      ? `${backendUrl}/api/memories/database/entries?category=${selectedCategory.value}`
-      : `${backendUrl}/api/memories/database/entries`
+      ? `api/memories/database/entries?category=${selectedCategory.value}`
+      : `api/memories/database/entries`
     const response = await fetch(url)
     const data = await response.json()
     dbEntries.value = data.entries || []
@@ -503,7 +504,7 @@ async function saveDbEntry() {
     
     if (editingDbEntry.value) {
       // Update existing
-      const response = await fetch(`${backendUrl}/api/memories/database/entries/${editingDbEntry.value.id}`, {
+      const response = await fetchWithAuth(`api/memories/database/entries/${editingDbEntry.value.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -520,7 +521,7 @@ async function saveDbEntry() {
       }
     } else {
       // Add new
-      const response = await fetch(`${backendUrl}/api/memories/database/entries`, {
+      const response = await fetchWithAuth(`api/memories/database/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -551,7 +552,7 @@ async function deleteDbEntry(entryId: number) {
   if (!confirm(`确定要删除这条记忆吗？`)) return
   
   try {
-    const response = await fetch(`${backendUrl}/api/memories/database/entries/${entryId}`, {
+    const response = await fetchWithAuth(`api/memories/database/entries/${entryId}`, {
       method: 'DELETE'
     })
     const data = await response.json()
