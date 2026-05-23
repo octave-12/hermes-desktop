@@ -427,6 +427,122 @@ async def delete_memory(memory_id: str):
     return {"status": "ok" if success else "error"}
 
 
+# ── Main Database Management APIs ───────────────────────────────
+
+@app.get("/api/database/tables")
+async def get_database_tables():
+    """Get list of tables in main database"""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )
+            tables = []
+            for (table_name,) in cursor.fetchall():
+                # Get row count
+                count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+                count = count_cursor.fetchone()[0]
+                # Get column info
+                col_cursor = conn.execute(f"PRAGMA table_info([{table_name}])")
+                columns = [row[1] for row in col_cursor.fetchall()]
+                tables.append({
+                    "name": table_name,
+                    "count": count,
+                    "columns": columns
+                })
+            return {"tables": tables}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/database/tables/{table_name}")
+async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
+    """Get data from a specific table"""
+    # Whitelist validation - only allow specific tables
+    allowed_tables = {
+        'sessions': {'pk': 'id', 'order': 'created_at DESC'},
+        'messages': {'pk': 'id', 'order': 'timestamp DESC'}, 
+        'config': {'pk': 'key', 'order': 'key ASC'}
+    }
+    
+    if table_name not in allowed_tables:
+        return {"error": "Table not allowed"}
+    
+    # Validate pagination params
+    if limit < 1 or limit > 1000:
+        limit = 100
+    if offset < 0:
+        offset = 0
+    
+    order_by = allowed_tables[table_name]['order']
+    
+    try:
+        with db.get_connection() as conn:
+            # Get total count
+            count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+            total = count_cursor.fetchone()[0]
+            
+            # Get rows with ordering and pagination
+            cursor = conn.execute(
+                f"SELECT * FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
+                (limit, offset)
+            )
+            rows = cursor.fetchall()
+            
+            # Get column names
+            columns = [description[0] for description in cursor.description]
+            
+            # Convert to list of dicts
+            data = []
+            for row in rows:
+                row_dict = {}
+                for i, col in enumerate(columns):
+                    value = row[i]
+                    # Convert bytes to string
+                    if isinstance(value, bytes):
+                        value = value.decode('utf-8', errors='replace')
+                    row_dict[col] = value
+                data.append(row_dict)
+            
+            return {
+                "table": table_name,
+                "columns": columns,
+                "rows": data,
+                "total": total,
+                "limit": limit,
+                "offset": offset
+            }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/api/database/tables/{table_name}/{row_id}")
+async def delete_table_row(table_name: str, row_id: str):
+    """Delete a row from a table"""
+    # Whitelist validation with primary key mapping
+    allowed_tables = {
+        'sessions': 'id',
+        'messages': 'id',
+        'config': 'key'
+    }
+    
+    if table_name not in allowed_tables:
+        return {"error": "Table not allowed", "status": "error"}
+    
+    pk_column = allowed_tables[table_name]
+    
+    try:
+        with db.get_connection() as conn:
+            conn.execute(
+                f"DELETE FROM [{table_name}] WHERE [{pk_column}] = ?",
+                (row_id,)
+            )
+            conn.commit()
+            return {"status": "ok"}
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()

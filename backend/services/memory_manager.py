@@ -65,6 +65,18 @@ class MemoryManager:
             "description": "结构化记忆数据（SQLite）"
         })
         
+        # Main application database (hermes.db)
+        from config import DB_PATH
+        types.append({
+            "id": "maindb",
+            "name": "应用主数据库",
+            "file": "hermes.db",
+            "path": DB_PATH,
+            "exists": os.path.exists(DB_PATH),
+            "size": os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0,
+            "description": "应用数据（会话、消息、配置）"
+        })
+        
         return types
     
     def get_memory_content(self, memory_id: str) -> Optional[str]:

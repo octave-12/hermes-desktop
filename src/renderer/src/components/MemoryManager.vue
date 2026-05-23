@@ -32,7 +32,7 @@
         <div class="memory-card-footer">
           <button 
             class="btn btn-view" 
-            @click="memory.id === 'database' ? viewDatabase() : viewMemory(memory)"
+            @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : viewMemory(memory)"
             :disabled="!memory.exists"
           >
             👁️ 查看
@@ -40,7 +40,7 @@
           <button 
             class="btn btn-edit" 
             @click="editMemory(memory)"
-            :disabled="!memory.exists || memory.id === 'database'"
+            :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb'"
           >
             ✏️ 编辑
           </button>
@@ -208,6 +208,75 @@
         </div>
       </div>
     </div>
+
+    <!-- Main Database Modal -->
+    <div v-if="showMainDbModal" class="modal-overlay" @click.self="closeMainDbModal">
+      <div class="modal-content main-db-modal">
+        <div class="modal-header">
+          <h2>💾 应用主数据库</h2>
+          <button class="close-btn" @click="closeMainDbModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="db-toolbar">
+            <select v-model="selectedTable" @change="loadTableData(0)" class="table-select">
+              <option value="">选择表</option>
+              <option v-for="table in mainDbTables" :key="table.name" :value="table.name">
+                {{ table.name }} ({{ table.count }})
+              </option>
+            </select>
+          </div>
+          
+          <div v-if="loadingMainDb" class="loading">加载中...</div>
+          <div v-else-if="tableData.rows.length > 0" class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th v-for="col in tableData.columns" :key="col">{{ col }}</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in tableData.rows" :key="index">
+                  <td v-for="col in tableData.columns" :key="col" class="table-cell">
+                    {{ formatCellValue(row[col]) }}
+                  </td>
+                  <td>
+                    <button 
+                      class="btn btn-sm btn-danger" 
+                      @click="deleteTableRow(row.id)"
+                      title="删除"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="table-pagination">
+              <span>共 {{ tableData.total }} 条</span>
+              <button 
+                class="btn btn-sm" 
+                @click="loadTableData(tableData.offset - tableData.limit)"
+                :disabled="tableData.offset === 0"
+              >
+                上一页
+              </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadTableData(tableData.offset + tableData.limit)"
+                :disabled="tableData.offset + tableData.rows.length >= tableData.total"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+          <div v-else-if="selectedTable" class="empty-message">表中暂无数据</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeMainDbModal">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -274,6 +343,20 @@ const dbEntryForm = ref({
   importance: 1,
   tagsInput: ''
 })
+
+// Main database state
+const showMainDbModal = ref(false)
+const mainDbTables = ref<{name: string; count: number; columns: string[]}[]>([])
+const selectedTable = ref('')
+const tableData = ref<{table: string; columns: string[]; rows: any[]; total: number; limit: number; offset: number}>({
+  table: '',
+  columns: [],
+  rows: [],
+  total: 0,
+  limit: 100,
+  offset: 0
+})
+const loadingMainDb = ref(false)
 
 // 使用 fetchWithAuth 替代硬编码 URL
 
@@ -564,6 +647,91 @@ async function deleteDbEntry(entryId: number) {
     }
   } catch (e: any) {
     alert(`删除失败: ${e.message}`)
+  }
+}
+
+// Main database functions
+async function viewMainDatabase() {
+  showMainDbModal.value = true
+  await loadMainDbTables()
+}
+
+async function loadMainDbTables() {
+  loadingMainDb.value = true
+  try {
+    const response = await fetchWithAuth('/api/database/tables')
+    const data = await response.json()
+    mainDbTables.value = data.tables || []
+  } catch (e: any) {
+    console.error('Failed to load tables:', e)
+  } finally {
+    loadingMainDb.value = false
+  }
+}
+
+async function loadTableData(offset: number = 0) {
+  if (!selectedTable.value) return
+  
+  loadingMainDb.value = true
+  try {
+    const response = await fetchWithAuth(`/api/database/tables/${selectedTable.value}?limit=100&offset=${offset}`)
+    const data = await response.json()
+    if (data.error) {
+      alert(data.error)
+      return
+    }
+    tableData.value = {
+      table: data.table || '',
+      columns: data.columns || [],
+      rows: data.rows || [],
+      total: data.total || 0,
+      limit: data.limit || 100,
+      offset: data.offset || 0
+    }
+  } catch (e: any) {
+    console.error('Failed to load table data:', e)
+    alert(`加载失败: ${e.message}`)
+  } finally {
+    loadingMainDb.value = false
+  }
+}
+
+async function deleteTableRow(rowId: string) {
+  if (!confirm(`确定要删除这条记录吗？\nID: ${rowId}`)) return
+  
+  try {
+    const response = await fetchWithAuth(`/api/database/tables/${selectedTable.value}/${rowId}`, {
+      method: 'DELETE'
+    })
+    const data = await response.json()
+    if (data.status === 'ok') {
+      await loadTableData(tableData.value.offset)
+    } else {
+      alert('删除失败')
+    }
+  } catch (e: any) {
+    alert(`删除失败: ${e.message}`)
+  }
+}
+
+function formatCellValue(value: any): string {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'string' && value.length > 50) {
+    return value.substring(0, 50) + '...'
+  }
+  return String(value)
+}
+
+function closeMainDbModal() {
+  showMainDbModal.value = false
+  selectedTable.value = ''
+  tableData.value = {
+    table: '',
+    columns: [],
+    rows: [],
+    total: 0,
+    limit: 100,
+    offset: 0
   }
 }
 
@@ -1024,4 +1192,68 @@ onMounted(() => {
 .form-row .form-group {
   flex: 1;
 }
+
+/* Main Database Styles */
+.main-db-modal {
+  width: 1000px;
+  height: 700px;
+}
+
+.table-select {
+  padding: 8px 12px;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  min-width: 200px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px 12px;
+  border: 1px solid #313244;
+  text-align: left;
+}
+
+.data-table th {
+  background: #313244;
+  color: #cdd6f4;
+  font-weight: 600;
+}
+
+.data-table td {
+  background: #1e1e2e;
+  color: #a6adc8;
+}
+
+.data-table tr:hover td {
+  background: #313244;
+}
+
+.table-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  color: #a6adc8;
+}
+
 </style>
