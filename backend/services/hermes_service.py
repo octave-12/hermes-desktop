@@ -141,12 +141,14 @@ class HermesService:
         # Get conversation history
         messages = db.get_session_messages(session_id)
         history = []
-        for msg in messages[:-1]:  # Exclude current user message
-            if msg["role"] in ("user", "assistant"):
-                history.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
+        # Handle empty messages array safely
+        if messages and len(messages) > 1:
+            for msg in messages[:-1]:  # Exclude current user message
+                if msg["role"] in ("user", "assistant"):
+                    history.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
 
         # Use asyncio.Queue for real streaming
         queue = asyncio.Queue()

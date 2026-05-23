@@ -91,8 +91,9 @@ export const useChatStore = defineStore('chat', () => {
     
     currentSessionId.value = id
     const session = sessions.value.find((s) => s.id === id)
-    // Load messages if session has none yet (lazy load from DB)
-    if (session && session.messages.length === 0) {
+    // Load messages if session has none or needs reload
+    if (session && (session.messages.length === 0 || session.needsReload)) {
+      session.needsReload = false
       wsSend({ type: 'load_messages', session_id: id })
     }
   }
@@ -322,10 +323,10 @@ export const useChatStore = defineStore('chat', () => {
           if (lastMsg && lastMsg.role === 'assistant') {
             session.lastAiMessage = lastMsg.content
           }
-          // If this is not current session, reload messages when user switches back
+          // If this is not current session, mark for reload instead of clearing
           if (data.session_id !== currentSessionId.value) {
-            // Mark session as needing reload
-            session.messages = []
+            // Set a flag to reload messages when user switches back
+            session.needsReload = true
           }
           processPendingMessages(session.id)
         }
