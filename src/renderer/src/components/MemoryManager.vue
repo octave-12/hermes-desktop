@@ -253,7 +253,13 @@
               </tbody>
             </table>
             <div class="table-pagination">
-              <span>共 {{ tableData.total }} 条</span>
+              <button 
+                class="btn btn-sm" 
+                @click="loadTableData(0)"
+                :disabled="tableData.offset === 0"
+              >
+                首页
+              </button>
               <button 
                 class="btn btn-sm" 
                 @click="loadTableData(tableData.offset - tableData.limit)"
@@ -261,6 +267,16 @@
               >
                 上一页
               </button>
+              <span class="page-info">
+                第 <input 
+                  type="number" 
+                  :value="currentTablePage" 
+                  @change="jumpToPage"
+                  min="1" 
+                  :max="totalTablePages"
+                  class="page-input"
+                /> / {{ totalTablePages }} 页
+              </span>
               <button 
                 class="btn btn-sm" 
                 @click="loadTableData(tableData.offset + tableData.limit)"
@@ -268,6 +284,14 @@
               >
                 下一页
               </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadTableData((totalTablePages - 1) * tableData.limit)"
+                :disabled="tableData.offset + tableData.rows.length >= tableData.total"
+              >
+                末页
+              </button>
+              <span class="total-info">共 {{ tableData.total }} 条</span>
             </div>
           </div>
           <div v-else-if="selectedTable" class="empty-message">表中暂无数据</div>
@@ -281,7 +305,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { fetchWithAuth } from '@/utils/api'
 
 interface Memory {
@@ -720,6 +744,27 @@ function formatCellValue(value: any): string {
     return value.substring(0, 50) + '...'
   }
   return String(value)
+}
+
+const currentTablePage = computed(() => {
+  if (tableData.value.limit === 0) return 1
+  return Math.floor(tableData.value.offset / tableData.value.limit) + 1
+})
+
+const totalTablePages = computed(() => {
+  if (tableData.value.limit === 0) return 1
+  return Math.ceil(tableData.value.total / tableData.value.limit)
+})
+
+function jumpToPage(event: Event) {
+  const input = event.target as HTMLInputElement
+  let page = parseInt(input.value)
+  
+  if (isNaN(page) || page < 1) page = 1
+  if (page > totalTablePages.value) page = totalTablePages.value
+  
+  const offset = (page - 1) * tableData.value.limit
+  loadTableData(offset)
 }
 
 function closeMainDbModal() {
@@ -1250,10 +1295,38 @@ onMounted(() => {
 
 .table-pagination {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  gap: 12px;
   margin-top: 16px;
   color: #a6adc8;
+}
+
+.page-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.page-input {
+  width: 60px;
+  padding: 4px 8px;
+  background: #313244;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  color: #cdd6f4;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.page-input:focus {
+  outline: none;
+  border-color: #89b4fa;
+}
+
+.total-info {
+  margin-left: 8px;
+  color: #6c7086;
 }
 
 </style>
