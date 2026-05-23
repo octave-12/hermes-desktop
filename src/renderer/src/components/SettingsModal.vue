@@ -301,7 +301,7 @@ const showAdvanced = ref(false)
 const addingModel = ref(false)
 const localDeepSeekSettings = ref<DeepSeekSettings>({
   thinking: false,
-  reasoningEffort: 'medium'
+  reasoningEffort: 'high'
 })
 const isDeepSeekV4Model = computed(() => {
   return localConfig.value.model.startsWith('deepseek-v4')

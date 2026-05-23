@@ -61,6 +61,8 @@ class HermesService:
             # Read DeepSeek thinking/reasoning settings from DB
             request_overrides = {}
             thinking = db.get_config("deepseek_thinking", "false")
+            
+            # Always set thinking type (enabled or disabled)
             if thinking == "true":
                 # Get reasoning effort (low/medium -> high, high/max -> max)
                 effort = db.get_config("deepseek_reasoning_effort", "high")
@@ -73,10 +75,15 @@ class HermesService:
                     reasoning_effort = effort  # high or max
                 
                 # reasoning_effort is a top-level parameter
-                # thinking goes in extra_body
                 request_overrides["reasoning_effort"] = reasoning_effort
+                # thinking goes in extra_body
                 request_overrides["extra_body"] = {
                     "thinking": {"type": "enabled"}
+                }
+            else:
+                # Explicitly disable thinking
+                request_overrides["extra_body"] = {
+                    "thinking": {"type": "disabled"}
                 }
 
             agent = AIAgent(
