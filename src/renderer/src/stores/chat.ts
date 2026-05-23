@@ -86,12 +86,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function switchSession(id: string) {
-    // Stop current session generation if switching to different session
-    const currentSession = getCurrentSession()
-    if (currentSession && currentSession.id !== id && currentSession.isLoading) {
-      wsSend({ type: 'stop_generation', session_id: currentSession.id })
-      currentSession.isLoading = false
-    }
+    // Don't stop generation - let AI continue in background
+    // Messages will be persisted to database automatically
     
     currentSessionId.value = id
     const session = sessions.value.find((s) => s.id === id)
@@ -304,6 +300,11 @@ export const useChatStore = defineStore('chat', () => {
           const lastMsg = session.messages[session.messages.length - 1]
           if (lastMsg && lastMsg.role === 'assistant') {
             session.lastAiMessage = lastMsg.content
+          }
+          // If this is not current session, reload messages when user switches back
+          if (data.session_id !== currentSessionId.value) {
+            // Mark session as needing reload
+            session.messages = []
           }
           processPendingMessages(session.id)
         }
