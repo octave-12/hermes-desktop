@@ -188,22 +188,38 @@ class HermesService:
         timeout_seconds = 120  # 2 minutes timeout
         start_time = asyncio.get_event_loop().time()
         
-        while not done_event.is_set() or not queue.empty():
-            # Check timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout_seconds:
-                yield {"type": "error", "message": f"Timeout after {timeout_seconds} seconds"}
-                return
-            
-            try:
-                delta = await asyncio.wait_for(queue.get(), timeout=0.1)
-                if delta.startswith("__ERROR__:"):
-                    yield {"type": "error", "message": delta[9:]}
+        try:
+            while not done_event.is_set() or not queue.empty():
+                # Check timeout
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed > timeout_seconds:
+                    # Persist partial content on timeout
+                    if full_content:
+                        assistant_msg_id = str(uuid.uuid4())
+                        db.add_message(assistant_msg_id, session_id, "assistant", full_content + "\n\n[超时中断]")
+                    yield {"type": "error", "message": f"Timeout after {timeout_seconds} seconds"}
                     return
-                full_content += delta
-                yield {"type": "token", "content": delta}
-            except asyncio.TimeoutError:
-                continue
+                
+                try:
+                    delta = await asyncio.wait_for(queue.get(), timeout=0.1)
+                    if delta.startswith("__ERROR__:"):
+                        # Persist partial content on error
+                        if full_content:
+                            assistant_msg_id = str(uuid.uuid4())
+                            db.add_message(assistant_msg_id, session_id, "assistant", full_content + "\n\n[生成中断]")
+                        yield {"type": "error", "message": delta[9:]}
+                        return
+                    full_content += delta
+                    yield {"type": "token", "content": delta}
+                except asyncio.TimeoutError:
+                    continue
+        except Exception as e:
+            # Persist partial content on exception
+            if full_content:
+                assistant_msg_id = str(uuid.uuid4())
+                db.add_message(assistant_msg_id, session_id, "assistant", full_content + "\n\n[异常中断]")
+            yield {"type": "error", "message": str(e)}
+            return
         
         # Persist assistant response
         if full_content:

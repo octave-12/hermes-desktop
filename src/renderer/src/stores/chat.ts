@@ -121,9 +121,19 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // ── Heartbeat ────────────────────────────────────────────
+  let lastPongTime = 0
+  const PONG_TIMEOUT = 30000 // 30 seconds
+
   function startHeartbeat() {
     stopHeartbeat()
+    lastPongTime = Date.now()
     heartbeatTimer = setInterval(() => {
+      // Check pong timeout
+      if (Date.now() - lastPongTime > PONG_TIMEOUT) {
+        console.warn('[WS] Pong timeout, closing connection')
+        ws.value?.close()
+        return
+      }
       wsSend({ type: 'ping' })
     }, HEARTBEAT_INTERVAL)
   }
@@ -179,16 +189,20 @@ export const useChatStore = defineStore('chat', () => {
     socket.onclose = () => {
       isConnected.value = false
       stopHeartbeat()
-      // Notify user about disconnection
-      const session = getCurrentSession()
-      if (session && session.messages.length > 0) {
-        session.messages.push({
-          id: crypto.randomUUID(),
-          role: 'system',
-          content: '连接已断开，正在尝试重新连接...',
-          timestamp: Date.now()
-        })
-      }
+      // Reset all sessions' isLoading state
+      sessions.value.forEach(session => {
+        if (session.isLoading) {
+          session.isLoading = false
+          if (session.messages.length > 0) {
+            session.messages.push({
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: '连接已断开，正在尝试重新连接...',
+              timestamp: Date.now()
+            })
+          }
+        }
+      })
       scheduleReconnect()
     }
 
@@ -201,7 +215,10 @@ export const useChatStore = defineStore('chat', () => {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === 'pong') return
+        if (data.type === 'pong') {
+          lastPongTime = Date.now()
+          return
+        }
         handleServerMessage(data)
       } catch (e) {
         console.error('[WS] Failed to parse message:', e)
@@ -343,23 +360,24 @@ export const useChatStore = defineStore('chat', () => {
     const trimmedContent = content.trim()
     if (!trimmedContent) return
     
-    // Check WebSocket connection
-    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-      // Notify user about connection issue
-      const session = getCurrentSession()
-      if (session) {
-        session.messages.push({
-          id: crypto.randomUUID(),
-          role: 'system',
-          content: '连接已断开，无法发送消息。请等待重连或刷新页面。',
-          timestamp: Date.now()
-        })
-      }
-      return
-    }
-
     const session = getCurrentSession()
     if (!session) return
+    
+    // Check WebSocket connection
+    if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+      // Add message to queue for later sending
+      const queue = pendingMessages.value.get(session.id) || []
+      queue.push(trimmedContent)
+      pendingMessages.value.set(session.id, queue)
+      
+      session.messages.push({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: '连接已断开，消息已加入队列，等待重连后发送...',
+        timestamp: Date.now()
+      })
+      return
+    }
 
     // If AI is currently responding, add to pending queue
     if (session.isLoading) {
