@@ -104,18 +104,24 @@
             </div>
             
             <div class="setting-group" v-if="isDeepSeekV4Model && localDeepSeekSettings.thinking">
-              <label class="setting-label">推理努力</label>
+              <label class="setting-label">推理努力程度</label>
               <div class="button-group">
                 <button 
-                  v-for="effort in ['low', 'medium', 'high']" 
-                  :key="effort"
                   class="btn-effort"
-                  :class="{ active: localDeepSeekSettings.reasoningEffort === effort }"
-                  @click="localDeepSeekSettings.reasoningEffort = effort as 'low' | 'medium' | 'high'"
+                  :class="{ active: localDeepSeekSettings.reasoningEffort === 'high' }"
+                  @click="localDeepSeekSettings.reasoningEffort = 'high'"
                 >
-                  {{ effort === 'low' ? '低' : effort === 'medium' ? '中' : '高' }}
+                  高（默认）
+                </button>
+                <button 
+                  class="btn-effort"
+                  :class="{ active: localDeepSeekSettings.reasoningEffort === 'max' }"
+                  @click="localDeepSeekSettings.reasoningEffort = 'max'"
+                >
+                  最高
                 </button>
               </div>
+              <p class="setting-hint">复杂 Agent 任务建议使用最高级别</p>
             </div>
 
             <div class="setting-group">

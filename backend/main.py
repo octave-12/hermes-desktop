@@ -93,7 +93,7 @@ async def get_deepseek_settings():
     """Get DeepSeek thinking/reasoning settings."""
     return {
         "thinking": db.get_config("deepseek_thinking", "false") == "true",
-        "reasoningEffort": db.get_config("deepseek_reasoning_effort", "medium"),
+        "reasoningEffort": db.get_config("deepseek_reasoning_effort", "high"),
     }
 
 

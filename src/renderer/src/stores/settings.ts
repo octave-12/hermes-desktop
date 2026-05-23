@@ -22,7 +22,7 @@ export interface ModelConfig {
 
 export interface DeepSeekSettings {
   thinking: boolean
-  reasoningEffort: 'low' | 'medium' | 'high'
+  reasoningEffort: 'high' | 'max'
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -86,7 +86,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const deepseekSettings = ref<DeepSeekSettings>({
     thinking: false,
-    reasoningEffort: 'medium'
+    reasoningEffort: 'high'
   })
 
   async function loadDeepSeekSettings(): Promise<DeepSeekSettings> {
@@ -96,7 +96,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const data = await response.json()
         deepseekSettings.value = {
           thinking: data.thinking === true,
-          reasoningEffort: data.reasoningEffort || 'medium'
+          reasoningEffort: data.reasoningEffort || 'high'
         }
         return deepseekSettings.value
       }
