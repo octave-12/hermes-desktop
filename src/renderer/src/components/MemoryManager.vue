@@ -274,7 +274,7 @@ const dbEntryForm = ref({
   tagsInput: ''
 })
 
-const backendUrl = 'http://localhost:8765'
+// 使用 fetchWithAuth 替代硬编码 URL
 
 function truncateContent(content: string, maxLength: number): string {
   if (content.length <= maxLength) return content

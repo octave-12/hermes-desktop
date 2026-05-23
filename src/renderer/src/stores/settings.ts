@@ -178,9 +178,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function testConnection(modelId: string, apiBaseUrl: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch('http://localhost:8765/api/test-connection', {
+      const response = await fetchWithAuth('/api/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: modelId, apiBaseUrl })
       })
       
@@ -199,9 +198,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function addCustomModel(model: ModelProfile, apiKey?: string): Promise<boolean> {
     try {
-      const response = await fetch(`http://localhost:8765/api/models/${model.id}`, {
+      const response = await fetchWithAuth(`/api/models/${model.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: model.name,
           provider: model.provider,
@@ -222,7 +220,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function deleteModel(modelId: string): Promise<boolean> {
     try {
-      const response = await fetch(`http://localhost:8765/api/models/${modelId}`, {
+      const response = await fetchWithAuth(`/api/models/${modelId}`, {
         method: 'DELETE'
       })
       
