@@ -86,6 +86,30 @@ async def update_config(request: dict):
     return {"status": "ok"}
 
 
+# ── DeepSeek Settings APIs ────────────────────────────────────
+
+@app.get("/api/deepseek/settings")
+async def get_deepseek_settings():
+    """Get DeepSeek thinking/reasoning settings."""
+    return {
+        "thinking": db.get_config("deepseek_thinking", "false") == "true",
+        "reasoningEffort": db.get_config("deepseek_reasoning_effort", "medium"),
+        "expertMode": db.get_config("deepseek_expert_mode", "false") == "true",
+    }
+
+
+@app.post("/api/deepseek/settings")
+async def update_deepseek_settings(request: dict):
+    """Update DeepSeek thinking/reasoning settings."""
+    if "thinking" in request:
+        db.set_config("deepseek_thinking", str(request["thinking"]))
+    if "reasoningEffort" in request:
+        db.set_config("deepseek_reasoning_effort", str(request["reasoningEffort"]))
+    if "expertMode" in request:
+        db.set_config("deepseek_expert_mode", str(request["expertMode"]))
+    return {"status": "ok"}
+
+
 # ── Model Management APIs ─────────────────────────────────────
 
 @app.get("/api/models")

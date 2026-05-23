@@ -20,6 +20,12 @@ export interface ModelConfig {
   maxTokens: number
 }
 
+export interface DeepSeekSettings {
+  thinking: boolean
+  reasoningEffort: 'low' | 'medium' | 'high'
+  expertMode: boolean
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const config = ref<ModelConfig>({
     model: '',
@@ -77,6 +83,46 @@ export const useSettingsStore = defineStore('settings', () => {
       console.error('Failed to load models:', error)
     }
     return []
+  }
+
+  const deepseekSettings = ref<DeepSeekSettings>({
+    thinking: false,
+    reasoningEffort: 'medium',
+    expertMode: false
+  })
+
+  async function loadDeepSeekSettings(): Promise<DeepSeekSettings> {
+    try {
+      const response = await fetchWithAuth('/api/deepseek/settings')
+      if (response.ok) {
+        const data = await response.json()
+        deepseekSettings.value = {
+          thinking: data.thinking === true,
+          reasoningEffort: data.reasoningEffort || 'medium',
+          expertMode: data.expertMode === true
+        }
+        return deepseekSettings.value
+      }
+    } catch (error) {
+      console.error('Failed to load DeepSeek settings:', error)
+    }
+    return deepseekSettings.value
+  }
+
+  async function saveDeepSeekSettings(settings: DeepSeekSettings): Promise<boolean> {
+    try {
+      const response = await fetchWithAuth('/api/deepseek/settings', {
+        method: 'POST',
+        body: JSON.stringify(settings)
+      })
+      if (response.ok) {
+        deepseekSettings.value = { ...settings }
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to save DeepSeek settings:', error)
+    }
+    return false
   }
 
   async function switchModel(modelId: string): Promise<{ success: boolean; needsApiKey?: boolean; apiBaseUrl?: string }> {
@@ -199,6 +245,9 @@ export const useSettingsStore = defineStore('settings', () => {
     checkApiKey,
     testConnection,
     addCustomModel,
-    deleteModel
+    deleteModel,
+    deepseekSettings,
+    loadDeepSeekSettings,
+    saveDeepSeekSettings
   }
 })

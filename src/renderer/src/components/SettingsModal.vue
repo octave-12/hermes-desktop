@@ -90,6 +90,54 @@
           </button>
           
           <div v-if="showAdvanced" class="advanced-settings">
+            <!-- DeepSeek 高级设置 -->
+            <div class="setting-group" v-if="isDeepSeekModel">
+              <label class="setting-label">模式选择</label>
+              <div class="button-group">
+                <button 
+                  class="btn-effort"
+                  :class="{ active: !localDeepSeekSettings.expertMode }"
+                  @click="localDeepSeekSettings.expertMode = false"
+                >
+                  ⚡ 快速模式 (v4-flash)
+                </button>
+                <button 
+                  class="btn-effort"
+                  :class="{ active: localDeepSeekSettings.expertMode }"
+                  @click="localDeepSeekSettings.expertMode = true"
+                >
+                  🎯 专家模式 (v4-pro)
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-group" v-if="isDeepSeekModel">
+              <label class="setting-label">深度思考</label>
+              <div class="toggle-row">
+                <label class="switch">
+                  <input type="checkbox" v-model="localDeepSeekSettings.thinking" />
+                  <span class="slider"></span>
+                </label>
+                <span class="toggle-label">{{ localDeepSeekSettings.thinking ? '已开启' : '已关闭' }}</span>
+              </div>
+              <p class="setting-hint">启用 DeepSeek 的深度思考模式（thinking）</p>
+            </div>
+            
+            <div class="setting-group" v-if="localDeepSeekSettings.thinking">
+              <label class="setting-label">推理努力</label>
+              <div class="button-group">
+                <button 
+                  v-for="effort in ['low', 'medium', 'high']" 
+                  :key="effort"
+                  class="btn-effort"
+                  :class="{ active: localDeepSeekSettings.reasoningEffort === effort }"
+                  @click="localDeepSeekSettings.reasoningEffort = effort"
+                >
+                  {{ effort === 'low' ? '低' : effort === 'medium' ? '中' : '高' }}
+                </button>
+              </div>
+            </div>
+
             <div class="setting-group">
               <label class="setting-label">Temperature: {{ localConfig.temperature }}</label>
               <input
@@ -227,7 +275,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { fetchWithAuth } from '@/utils/api'
-import { useSettingsStore, type ModelProfile } from '@/stores/settings'
+import { useSettingsStore, type ModelProfile, type DeepSeekSettings } from '@/stores/settings'
 import MemoryManager from './MemoryManager.vue'
 
 const emit = defineEmits<{
@@ -265,6 +313,14 @@ const showModelSelector = ref(false)
 const showAddModel = ref(false)
 const showAdvanced = ref(false)
 const addingModel = ref(false)
+const localDeepSeekSettings = ref<DeepSeekSettings>({
+  thinking: false,
+  reasoningEffort: 'medium',
+  expertMode: false
+})
+const isDeepSeekModel = computed(() => {
+  return localConfig.value.provider === 'deepseek'
+})
 const newModel = ref({
   id: '',
   provider: 'custom',
@@ -288,7 +344,8 @@ watch(
 async function loadAllData() {
   await Promise.all([
     loadCurrentConfig(),
-    loadModels()
+    loadModels(),
+    loadDeepSeekSettings()
   ])
 }
 
@@ -322,6 +379,13 @@ async function loadModels() {
     }
   } catch (error) {
     console.error('[Settings] Failed to load models:', error)
+  }
+}
+
+async function loadDeepSeekSettings() {
+  const settings = await settingsStore.loadDeepSeekSettings()
+  if (settings) {
+    localDeepSeekSettings.value = { ...settings }
   }
 }
 
@@ -390,6 +454,7 @@ async function saveSettings() {
     }
     
     await settingsStore.saveConfig(localConfig.value)
+    await settingsStore.saveDeepSeekSettings(localDeepSeekSettings.value)
     emit('close')
   } catch (error) {
     console.error('Failed to save settings:', error)
@@ -995,5 +1060,72 @@ onMounted(async () => {
   background: #181825;
   border-radius: 8px;
   border: 1px solid #313244;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toggle-label {
+  font-size: 0.85rem;
+  color: #a6adc8;
+}
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #45475a;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px; width: 18px;
+  left: 3px; bottom: 3px;
+  background: #cdd6f4;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+input:checked + .slider {
+  background: #89b4fa;
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+.button-group {
+  display: flex;
+  gap: 8px;
+}
+.btn-effort {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  background: #313244;
+  color: #cdd6f4;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+}
+.btn-effort.active {
+  background: #89b4fa;
+  color: #1e1e2e;
+  border-color: #89b4fa;
+}
+.btn-effort:hover:not(.active) {
+  border-color: #89b4fa;
 }
 </style>

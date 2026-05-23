@@ -58,11 +58,22 @@ class HermesService:
             return None
         
         try:
+            # Read DeepSeek thinking/reasoning settings from DB
+            request_overrides = {}
+            thinking = db.get_config("deepseek_thinking", "false")
+            if thinking == "true":
+                reasoning_effort = db.get_config("deepseek_reasoning_effort", "medium")
+                request_overrides["extra_body"] = {
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": reasoning_effort,
+                }
+
             agent = AIAgent(
                 model=model_id,
                 api_key=api_key,
                 base_url=api_base_url,
                 session_id=session_id,
+                request_overrides=request_overrides if request_overrides else None,
             )
             return agent
         except Exception as e:
@@ -100,7 +111,22 @@ class HermesService:
                 yield {"type": "session_title", "session_id": session_id, "title": title}
 
             # Get model configuration
-            model = model_config_manager.get_model_config(db.get_config("model", db.get_hermes_default_model()))
+            # Check if expert mode is enabled (DeepSeek V4 Pro vs Flash)
+            deepseek_expert_mode = db.get_config("deepseek_expert_mode", "false")
+            configured_model_id = db.get_config("model", db.get_hermes_default_model())
+            
+            # If expert mode is on, automatically use v4-pro
+            if deepseek_expert_mode == "true":
+                model = model_config_manager.get_model_config("deepseek-v4-pro")
+                if not model:
+                    model = model_config_manager.get_model_config(configured_model_id)
+            else:
+                # If currently on deepseek-chat, stick with it; otherwise use v4-flash as default
+                if configured_model_id in ("deepseek-v4-pro", "deepseek-v4-flash"):
+                    model = model_config_manager.get_model_config("deepseek-v4-flash")
+                else:
+                    model = model_config_manager.get_model_config(configured_model_id)
+            
             model_id = model.get('id', 'deepseek-chat') if model else 'deepseek-chat'
             api_key_env = model.get('api_key_env') if model else None
             
