@@ -31,6 +31,8 @@ export interface Session {
   isLoading?: boolean
   queueItems?: QueueItem[]
   needsReload?: boolean
+  totalCount?: number
+  hasMore?: boolean
 }
 
 export interface WeChatConnection {
@@ -113,8 +115,12 @@ export const useChatStore = defineStore('chat', () => {
     // Load messages if session has none or needs reload
     if (session && (session.messages.length === 0 || session.needsReload)) {
       session.needsReload = false
-      wsSend({ type: 'load_messages', session_id: id })
+      wsSend({ type: 'load_messages', session_id: id, limit: 100 })
     }
+  }
+
+  function loadMoreMessages(sessionId: string, beforeTimestamp: number) {
+    wsSend({ type: 'load_messages', session_id: sessionId, before_timestamp: beforeTimestamp, limit: 100 })
   }
 
   function getCurrentSession(): Session | undefined {
@@ -294,9 +300,19 @@ export const useChatStore = defineStore('chat', () => {
       }
       case 'messages_loaded': {
         const session = sessions.value.find((s) => s.id === data.session_id)
-        if (session && session.messages.length === 0) {
-          session.messages = data.messages
-          // Extract last AI message for preview
+        if (session) {
+          if (session.messages.length === 0) {
+            session.messages = data.messages
+          } else if (data.messages.length > 0) {
+            const firstNewTimestamp = data.messages[0].timestamp
+            const existingIds = new Set(session.messages.map(m => m.id))
+            const newMessages = data.messages.filter(m => !existingIds.has(m.id))
+            if (newMessages.length > 0) {
+              session.messages = [...newMessages, ...session.messages]
+            }
+          }
+          session.totalCount = data.total_count
+          session.hasMore = data.has_more
           const aiMessages = data.messages.filter((m: Message) => m.role === 'assistant')
           if (aiMessages.length > 0) {
             session.lastAiMessage = aiMessages[aiMessages.length - 1].content
@@ -375,20 +391,6 @@ export const useChatStore = defineStore('chat', () => {
         if (session) {
           session.queueItems = data.queue_items || []
           session.isLoading = data.queue_length > 0
-        }
-        break
-      }
-      case 'user_message': {
-        const session = sessions.value.find((s) => s.id === data.session_id)
-        if (session) {
-          // Add user message to chat when processing from queue
-          session.messages.push({
-            id: data.message_id,
-            role: 'user',
-            content: data.content,
-            timestamp: Date.now()
-          })
-          session.isLoading = true
         }
         break
       }
@@ -640,6 +642,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     stopGeneration,
     removeFromQueue,
+    loadMoreMessages,
     connectWebSocket,
     disconnect
   }

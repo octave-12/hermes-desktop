@@ -77,6 +77,18 @@ class MemoryManager:
             "description": "应用数据（会话、消息、配置）"
         })
         
+        # Gateway database (state.db) - Weixin messages
+        gateway_db = os.path.join(self.hermes_home, "state.db")
+        types.append({
+            "id": "gatewaydb",
+            "name": "微信数据库",
+            "file": "state.db",
+            "path": gateway_db,
+            "exists": os.path.exists(gateway_db),
+            "size": os.path.getsize(gateway_db) if os.path.exists(gateway_db) else 0,
+            "description": "Gateway 微信会话和消息（只读）"
+        })
+        
         return types
     
     def get_memory_content(self, memory_id: str) -> Optional[str]:
@@ -88,13 +100,11 @@ class MemoryManager:
             return None
         
         if memory_id == "database":
-            # Return database info instead of binary content
             import sqlite3
             try:
                 conn = sqlite3.connect(memory["path"])
                 cursor = conn.cursor()
                 
-                # Get tables
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = cursor.fetchall()
                 
@@ -104,12 +114,45 @@ class MemoryManager:
                 info += "## 表结构\n\n"
                 
                 for (table_name,) in tables:
-                    # Whitelist validate table name (alphanumeric and underscore only)
                     if not table_name.replace('_', '').isalnum():
                         continue
                     cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
                     count = cursor.fetchone()[0]
                     info += f"- **{table_name}**: {count} 条记录\n"
+                
+                conn.close()
+                return info
+            except Exception as e:
+                return f"读取数据库失败: {str(e)}"
+        
+        if memory_id == "gatewaydb":
+            import sqlite3
+            try:
+                conn = sqlite3.connect(memory["path"])
+                cursor = conn.cursor()
+                
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+                
+                info = f"# Gateway 微信数据库\n\n"
+                info += f"文件: {memory['path']}\n"
+                info += f"大小: {memory['size'] // 1024} KB\n\n"
+                info += "## 表结构\n\n"
+                
+                for (table_name,) in tables:
+                    if not table_name.replace('_', '').isalnum():
+                        continue
+                    try:
+                        cursor.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+                        count = cursor.fetchone()[0]
+                        info += f"- **{table_name}**: {count} 条记录\n"
+                    except:
+                        info += f"- **{table_name}**: (无法读取)\n"
+                
+                info += "\n## 说明\n\n"
+                info += "- Gateway 微信消息存储在此数据库\n"
+                info += "- Desktop 直接读取显示，无需同步\n"
+                info += "- 只读模式，不可编辑\n"
                 
                 conn.close()
                 return info

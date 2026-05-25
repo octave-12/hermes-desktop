@@ -58,7 +58,7 @@ class EnvManager:
             return api_key_env
         
         # Otherwise, generate from model_id
-        # Example: deepseek-chat -> DEEPSEEK_CHAT_API_KEY
+        # Example: deepseek-v4-pro -> DEEPSEEK_CHAT_API_KEY
         # Example: gpt-4o -> GPT_4O_API_KEY
         return f"{model_id.upper().replace('-', '_')}_API_KEY"
     

@@ -31,6 +31,14 @@ def _get_conn():
 def init_db():
     """Create tables if they don't exist."""
     with get_connection() as conn:
+        # Set auto_vacuum mode (must be set before any tables are created)
+        current_vacuum = conn.execute("PRAGMA auto_vacuum").fetchone()[0]
+        if current_vacuum != 2:  # 2 = INCREMENTAL
+            conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
+            print(f"[DB] Enabled incremental auto_vacuum (was {current_vacuum})")
+        
+        conn.execute("PRAGMA journal_mode = WAL")
+        
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id                  TEXT PRIMARY KEY,
@@ -72,16 +80,22 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sessions_hermes_sid
                 ON sessions(hermes_session_id);
             
-            -- Messages table indexes
+            -- Messages table indexes (optimized for common queries)
             CREATE INDEX IF NOT EXISTS idx_messages_session
-                ON messages(session_id, timestamp);
+                ON messages(session_id, timestamp DESC);
             
             CREATE INDEX IF NOT EXISTS idx_messages_session_role
-                ON messages(session_id, role);
+                ON messages(session_id, role, timestamp DESC);
             
             CREATE INDEX IF NOT EXISTS idx_messages_timestamp
-                ON messages(timestamp);
+                ON messages(timestamp DESC);
+            
+            CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp
+                ON messages(session_id, timestamp DESC);
         """)
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA cache_size = 10000")
+        conn.execute("PRAGMA temp_store = MEMORY")
         # Migration: add hermes_session_id column if missing
         try:
             conn.execute("ALTER TABLE sessions ADD COLUMN hermes_session_id TEXT")
@@ -102,6 +116,14 @@ def init_db():
             conn.commit()
         except sqlite3.OperationalError:
             pass  # index already exists
+        
+        # Check and run incremental vacuum on startup if needed
+        freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+        if freelist > 5000:  # More than ~20MB free space
+            print(f"[DB] Large freelist detected ({freelist} pages), running incremental vacuum...")
+            conn.execute("PRAGMA incremental_vacuum(5000)")
+            new_freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+            print(f"[DB] Vacuum complete: {freelist} -> {new_freelist} free pages")
 
 
 # ── Session operations ────────────────────────────────────────
@@ -118,9 +140,16 @@ def create_session(session_id: str, title: str = "新对话") -> dict:
 
 
 def list_sessions() -> list[dict]:
+    """List all sessions with wechat session pinned to top."""
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, title, created_at FROM sessions ORDER BY created_at DESC"
+            """
+            SELECT id, title, created_at FROM sessions 
+            ORDER BY 
+              CASE WHEN id = ? THEN 0 ELSE 1 END,
+              created_at DESC
+            """,
+            (WECHAT_SESSION_ID,)
         ).fetchall()
     return [{"id": r["id"], "title": r["title"], "createdAt": r["created_at"]} for r in rows]
 
@@ -137,6 +166,22 @@ def delete_session(session_id: str):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         conn.commit()
+    
+    # Run incremental vacuum after deletion
+    _run_incremental_vacuum()
+
+
+def _run_incremental_vacuum():
+    """Run incremental vacuum to reclaim space."""
+    try:
+        with get_connection() as conn:
+            freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
+            
+            if freelist > 1000:
+                conn.execute("PRAGMA incremental_vacuum(1000)")
+                print(f"[DB] Incremental vacuum: freed {freelist} pages")
+    except Exception as e:
+        print(f"[DB] Incremental vacuum failed: {e}")
 
 
 # ── Message operations ────────────────────────────────────────
@@ -171,12 +216,18 @@ def update_message_content(message_id: str, content: str, tool_calls: Optional[l
         conn.commit()
 
 
-def get_session_messages(session_id: str) -> list[dict]:
+def get_session_messages(session_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    """Get messages for a session with pagination (default 100 per page)."""
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, role, content, tool_calls, timestamp, source FROM messages "
-            "WHERE session_id = ? ORDER BY timestamp ASC",
-            (session_id,),
+            """
+            SELECT id, role, content, tool_calls, timestamp, source 
+            FROM messages 
+            WHERE session_id = ? 
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+            """,
+            (session_id, limit, offset),
         ).fetchall()
     messages = []
     for r in rows:
@@ -190,7 +241,45 @@ def get_session_messages(session_id: str) -> list[dict]:
         if r["tool_calls"]:
             msg["toolCalls"] = json.loads(r["tool_calls"])
         messages.append(msg)
-    return messages
+    return list(reversed(messages))
+
+
+def get_session_messages_before(session_id: str, before_timestamp: int, limit: int = 100) -> list[dict]:
+    """Get messages before a timestamp (for infinite scroll upward)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, role, content, tool_calls, timestamp, source 
+            FROM messages 
+            WHERE session_id = ? AND timestamp < ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (session_id, before_timestamp, limit),
+        ).fetchall()
+    messages = []
+    for r in rows:
+        msg = {
+            "id": r["id"],
+            "role": r["role"],
+            "content": r["content"],
+            "timestamp": r["timestamp"],
+            "source": r["source"] if r["source"] else "desktop",
+        }
+        if r["tool_calls"]:
+            msg["toolCalls"] = json.loads(r["tool_calls"])
+        messages.append(msg)
+    return list(reversed(messages))
+
+
+def get_session_message_count(session_id: str) -> int:
+    """Get total message count for a session."""
+    with get_connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()[0]
+    return count
 
 
 def get_user_message_count(session_id: str) -> int:
@@ -281,25 +370,32 @@ def get_hermes_default_model() -> str:
 # ── WeChat connection operations ────────────────────────────────
 
 def save_wechat_connection(user_id: str, nickname: str, avatar: str):
-    """Save or update a WeChat connection."""
+    """Save WeChat connection (singleton mode - replaces any existing)."""
     now = int(time.time() * 1000)
     with get_connection() as conn:
+        conn.execute("DELETE FROM wechat_connections")
         conn.execute("""
-            INSERT OR REPLACE INTO wechat_connections 
+            INSERT INTO wechat_connections 
             (user_id, nickname, avatar, connected_at, status)
             VALUES (?, ?, ?, ?, 'connected')
         """, (user_id, nickname, avatar, now))
         conn.commit()
 
 
-def get_wechat_connections() -> list[dict]:
-    """Get all connected WeChat accounts."""
+def get_wechat_connection() -> Optional[dict]:
+    """Get the single WeChat connection (singleton mode)."""
     with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT user_id, nickname, avatar, connected_at, status "
-            "FROM wechat_connections WHERE status = 'connected'"
-        ).fetchall()
-    return [dict(r) for r in rows]
+        row = conn.execute(
+            "SELECT user_id, nickname, avatar, connected_at, status, current_session_id "
+            "FROM wechat_connections WHERE status = 'connected' LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_wechat_connections() -> list[dict]:
+    """Get connected WeChat account (for compatibility, returns list)."""
+    conn = get_wechat_connection()
+    return [conn] if conn else []
 
 
 def disconnect_wechat(user_id: str):
@@ -337,3 +433,150 @@ def get_wechat_current_session(user_id: str) -> Optional[str]:
             (user_id,)
         ).fetchone()
         return row["current_session_id"] if row else None
+
+
+WECHAT_SESSION_ID = "wechat-session"
+
+
+def get_or_create_wechat_session() -> str:
+    """Get or create the single WeChat session (singleton)."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM sessions WHERE id = ?",
+            (WECHAT_SESSION_ID,)
+        ).fetchone()
+        
+        if row:
+            return WECHAT_SESSION_ID
+        
+        now = int(time.time() * 1000)
+        conn.execute(
+            "INSERT INTO sessions (id, title, created_at) VALUES (?, ?, ?)",
+            (WECHAT_SESSION_ID, "微信对话", now),
+        )
+        conn.commit()
+        return WECHAT_SESSION_ID
+
+
+def get_gateway_messages(limit: int = 100, offset: int = 0) -> list[dict]:
+    """Get Weixin messages directly from Gateway's state.db."""
+    from pathlib import Path
+    gateway_db = Path.home() / ".hermes" / "state.db"
+    
+    if not gateway_db.exists():
+        return []
+    
+    try:
+        conn = sqlite3.connect(str(gateway_db))
+        conn.row_factory = sqlite3.Row
+        
+        rows = conn.execute(
+            """
+            SELECT m.id, m.role, m.content, m.timestamp, m.tool_calls
+            FROM messages m
+            JOIN sessions s ON m.session_id = s.id
+            WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant')
+              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
+            ORDER BY m.timestamp DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset)
+        ).fetchall()
+        
+        messages = []
+        for r in rows:
+            msg = {
+                "id": f"gateway-{r['id']}",
+                "role": r["role"],
+                "content": r["content"] or "",
+                "timestamp": int(r["timestamp"] * 1000),
+                "source": "gateway",
+            }
+            if r["tool_calls"]:
+                try:
+                    msg["toolCalls"] = json.loads(r["tool_calls"])
+                except:
+                    pass
+            messages.append(msg)
+        
+        conn.close()
+        return list(reversed(messages))
+        
+    except Exception as e:
+        print(f"[DB] Error reading gateway messages: {e}")
+        return []
+
+
+def get_gateway_messages_before(before_timestamp: float, limit: int = 100) -> list[dict]:
+    """Get Weixin messages before timestamp from Gateway's state.db."""
+    from pathlib import Path
+    gateway_db = Path.home() / ".hermes" / "state.db"
+    
+    if not gateway_db.exists():
+        return []
+    
+    try:
+        conn = sqlite3.connect(str(gateway_db))
+        conn.row_factory = sqlite3.Row
+        
+        rows = conn.execute(
+            """
+            SELECT m.id, m.role, m.content, m.timestamp, m.tool_calls
+            FROM messages m
+            JOIN sessions s ON m.session_id = s.id
+            WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant') AND m.timestamp < ?
+              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
+            ORDER BY m.timestamp DESC
+            LIMIT ?
+            """,
+            (before_timestamp, limit)
+        ).fetchall()
+        
+        messages = []
+        for r in rows:
+            msg = {
+                "id": f"gateway-{r['id']}",
+                "role": r["role"],
+                "content": r["content"] or "",
+                "timestamp": int(r["timestamp"] * 1000),
+                "source": "gateway",
+            }
+            if r["tool_calls"]:
+                try:
+                    msg["toolCalls"] = json.loads(r["tool_calls"])
+                except:
+                    pass
+            messages.append(msg)
+        
+        conn.close()
+        return list(reversed(messages))
+        
+    except Exception as e:
+        print(f"[DB] Error reading gateway messages: {e}")
+        return []
+
+
+def get_gateway_message_count() -> int:
+    """Get total Weixin message count from Gateway's state.db."""
+    from pathlib import Path
+    gateway_db = Path.home() / ".hermes" / "state.db"
+    
+    if not gateway_db.exists():
+        return 0
+    
+    try:
+        conn = sqlite3.connect(str(gateway_db))
+        count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM messages m
+            JOIN sessions s ON m.session_id = s.id
+            WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant')
+              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
+            """
+        ).fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"[DB] Error counting gateway messages: {e}")
+        return 0

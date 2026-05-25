@@ -44,14 +44,20 @@
           v-for="session in filteredSessions"
           :key="session.id"
           class="session-item"
-          :class="{ active: session.id === chatStore.currentSessionId }"
+          :class="{ 
+            active: session.id === chatStore.currentSessionId,
+            wechat: session.id === 'wechat-session'
+          }"
           @click="chatStore.switchSession(session.id)"
           @dblclick.stop="startRename(session.id, session.title)"
         >
           <!-- Normal display -->
           <template v-if="renamingId !== session.id">
             <div class="session-info">
-              <span class="session-title">{{ session.title }}</span>
+              <span class="session-title">
+                <span v-if="session.id === 'wechat-session'" class="wechat-badge">📱</span>
+                {{ session.title }}
+              </span>
               <span v-if="session.lastAiMessage" class="session-preview">{{ truncateText(session.lastAiMessage, 40) }}</span>
             </div>
             <div class="session-menu">
@@ -67,14 +73,14 @@
                 </svg>
               </button>
               <div v-if="activeMenu === session.id" class="menu-dropdown">
-                <button class="menu-item" @click.stop="startRename(session.id, session.title)">
+                <button v-if="session.id !== 'wechat-session'" class="menu-item" @click.stop="startRename(session.id, session.title)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
                   <span>重命名</span>
                 </button>
-                <button class="menu-item delete" @click.stop="deleteSession(session.id)">
+                <button v-if="session.id !== 'wechat-session'" class="menu-item delete" @click.stop="deleteSession(session.id)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -593,6 +599,23 @@ onUnmounted(() => {
 .session-item.active {
   background: #45475a;
   color: #cdd6f4;
+}
+
+.session-item.wechat {
+  border-left: 3px solid #07C160;
+  background: rgba(7, 193, 96, 0.05);
+}
+
+.session-item.wechat:hover {
+  background: rgba(7, 193, 96, 0.1);
+}
+
+.session-item.wechat.active {
+  background: rgba(7, 193, 96, 0.15);
+}
+
+.wechat-badge {
+  margin-right: 4px;
 }
 
 .sidebar-footer {

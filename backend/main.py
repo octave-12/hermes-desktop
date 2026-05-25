@@ -17,7 +17,6 @@ from services.env_manager import env_manager
 from services.memory_manager import memory_manager
 from services.auth import init_auth_token, get_auth_token, auth_middleware
 from services.wechat_gateway import router as wechat_router
-from services.gateway_sync import gateway_sync
 
 
 @asynccontextmanager
@@ -27,12 +26,8 @@ async def lifespan(app: FastAPI):
     print(f"[AUTH] Authentication token initialized: {token[:8]}...")
     print("[DB] Database initialized")
     
-    print("[WeChat] 使用 Hermes Gateway 集成模式")
-    status = gateway_sync.get_weixin_status()
-    if status.get("gateway_running"):
-        print(f"[WeChat] Gateway 运行中，微信状态: {status.get('connected', False)}")
-    else:
-        print("[WeChat] Gateway 未运行，请先启动: hermes gateway run")
+    db.get_or_create_wechat_session()
+    print("[WeChat] 微信会话已就绪 (直接读取 Gateway 数据库)")
     
     yield
 
@@ -624,7 +619,6 @@ async def get_database_tables():
 @app.get("/api/database/tables/{table_name}")
 async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
     """Get data from a specific table"""
-    # Whitelist validation - only allow specific tables
     allowed_tables = {
         'sessions': {'pk': 'id', 'order': 'created_at DESC'},
         'messages': {'pk': 'id', 'order': 'timestamp DESC'}, 
@@ -635,7 +629,6 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
     if table_name not in allowed_tables:
         return {"error": "Table not allowed"}
     
-    # Validate pagination params
     if limit < 1 or limit > 1000:
         limit = 100
     if offset < 0:
@@ -645,27 +638,22 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
     
     try:
         with db.get_connection() as conn:
-            # Get total count
             count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
             total = count_cursor.fetchone()[0]
             
-            # Get rows with ordering and pagination
             cursor = conn.execute(
                 f"SELECT * FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
                 (limit, offset)
             )
             rows = cursor.fetchall()
             
-            # Get column names
             columns = [description[0] for description in cursor.description]
             
-            # Convert to list of dicts
             data = []
             for row in rows:
                 row_dict = {}
                 for i, col in enumerate(columns):
                     value = row[i]
-                    # Convert bytes to string
                     if isinstance(value, bytes):
                         value = value.decode('utf-8', errors='replace')
                     row_dict[col] = value
@@ -680,6 +668,102 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
                 "offset": offset,
                 "primaryKey": allowed_tables[table_name]['pk']
             }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ── Gateway Database Management APIs ───────────────────────────────
+
+@app.get("/api/gateway/tables")
+async def get_gateway_tables():
+    """Get list of tables in Gateway database (only sessions and messages)"""
+    from pathlib import Path
+    gateway_db = Path.home() / ".hermes" / "state.db"
+    
+    if not gateway_db.exists():
+        return {"error": "Gateway database not found"}
+    
+    allowed_tables = ['sessions', 'messages']
+    
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(gateway_db))
+        tables = []
+        for table_name in allowed_tables:
+            count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+            count = count_cursor.fetchone()[0]
+            col_cursor = conn.execute(f"PRAGMA table_info([{table_name}])")
+            columns = [row[1] for row in col_cursor.fetchall()]
+            tables.append({
+                "name": table_name,
+                "count": count,
+                "columns": columns
+            })
+        conn.close()
+        return {"tables": tables}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/gateway/tables/{table_name}")
+async def get_gateway_table_data(table_name: str, limit: int = 100, offset: int = 0):
+    """Get data from a specific Gateway table"""
+    from pathlib import Path
+    gateway_db = Path.home() / ".hermes" / "state.db"
+    
+    if not gateway_db.exists():
+        return {"error": "Gateway database not found"}
+    
+    allowed_tables = {
+        'sessions': {'pk': 'id', 'order': 'started_at DESC'},
+        'messages': {'pk': 'id', 'order': 'timestamp DESC'},
+    }
+    
+    if table_name not in allowed_tables:
+        return {"error": "Table not allowed"}
+    
+    if limit < 1 or limit > 1000:
+        limit = 100
+    if offset < 0:
+        offset = 0
+    
+    order_by = allowed_tables[table_name]['order']
+    
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(gateway_db))
+        
+        count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+        total = count_cursor.fetchone()[0]
+        
+        cursor = conn.execute(
+            f"SELECT * FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
+            (limit, offset)
+        )
+        rows = cursor.fetchall()
+        
+        columns = [description[0] for description in cursor.description]
+        
+        data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(columns):
+                value = row[i]
+                if isinstance(value, bytes):
+                    value = value.decode('utf-8', errors='replace')
+                row_dict[col] = value
+            data.append(row_dict)
+        
+        conn.close()
+        return {
+            "table": table_name,
+            "columns": columns,
+            "rows": data,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "primaryKey": allowed_tables[table_name]['pk']
+        }
     except Exception as e:
         return {"error": str(e)}
 
@@ -759,16 +843,6 @@ async def websocket_endpoint(websocket: WebSocket):
             # Acquire lock for this session
             async with lock:
                 try:
-                    # Notify client to display user message
-                    await broadcast_to_all({
-                        "type": "user_message",
-                        "session_id": session_id,
-                        "message_id": user_msg_id,
-                        "content": content,
-                        "source": source
-                    })
-                    
-                    # Notify client about remaining queue (after removing current message)
                     remaining = len(queue)
                     if remaining > 0:
                         await broadcast_to_all({
@@ -781,7 +855,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             ]
                         })
                     
-                    # Process with Hermes
                     async for chunk in hermes_service.chat(session_id, content, user_msg_id):
                         chunk["session_id"] = session_id
                         chunk["source"] = source
@@ -919,6 +992,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif msg_type == "load_sessions":
                 sessions = db.list_sessions()
+                
+                wechat_session_exists = any(s['id'] == db.WECHAT_SESSION_ID for s in sessions)
+                if not wechat_session_exists:
+                    db.get_or_create_wechat_session()
+                    sessions = db.list_sessions()
+                
                 await websocket.send_text(json.dumps({
                     "type": "sessions_loaded",
                     "sessions": sessions,
@@ -928,11 +1007,29 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not validate_message(message, ["session_id"]):
                     continue
                 session_id = message["session_id"]
-                messages = db.get_session_messages(session_id)
+                limit = message.get("limit", 100)
+                offset = message.get("offset", 0)
+                before_timestamp = message.get("before_timestamp")
+                
+                if session_id == db.WECHAT_SESSION_ID:
+                    if before_timestamp:
+                        messages = db.get_gateway_messages_before(before_timestamp / 1000.0, limit)
+                    else:
+                        messages = db.get_gateway_messages(limit, offset)
+                    total_count = db.get_gateway_message_count()
+                else:
+                    if before_timestamp:
+                        messages = db.get_session_messages_before(session_id, before_timestamp, limit)
+                    else:
+                        messages = db.get_session_messages(session_id, limit, offset)
+                    total_count = db.get_session_message_count(session_id)
+                
                 await websocket.send_text(json.dumps({
                     "type": "messages_loaded",
                     "session_id": session_id,
                     "messages": messages,
+                    "total_count": total_count,
+                    "has_more": offset + len(messages) < total_count
                 }))
 
             elif msg_type == "create_session":

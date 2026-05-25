@@ -32,7 +32,7 @@
         <div class="memory-card-footer">
           <button 
             class="btn btn-view" 
-            @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : viewMemory(memory)"
+            @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : memory.id === 'gatewaydb' ? viewGatewayDatabase() : viewMemory(memory)"
             :disabled="!memory.exists"
           >
             👁️ 查看
@@ -40,7 +40,7 @@
           <button 
             class="btn btn-edit" 
             @click="editMemory(memory)"
-            :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb'"
+            :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb' || memory.id === 'gatewaydb'"
           >
             ✏️ 编辑
           </button>
@@ -301,6 +301,83 @@
         </div>
       </div>
     </div>
+
+    <!-- Gateway Database Modal -->
+    <div v-if="showGatewayDbModal" class="modal-overlay" @click.self="closeGatewayDbModal">
+      <div class="modal-content main-db-modal">
+        <div class="modal-header">
+          <h2>📱 Gateway 微信数据库</h2>
+          <button class="close-btn" @click="closeGatewayDbModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="db-toolbar">
+            <select v-model="selectedGatewayTable" @change="loadGatewayTableData(0)" class="table-select">
+              <option value="">选择表</option>
+              <option v-for="table in gatewayDbTables" :key="table.name" :value="table.name">
+                {{ table.name }} ({{ table.count }})
+              </option>
+            </select>
+            <span class="readonly-hint">只读模式</span>
+          </div>
+          
+          <div v-if="loadingGatewayDb" class="loading">加载中...</div>
+          <div v-else-if="gatewayTableData.rows.length > 0" class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th v-for="col in gatewayTableData.columns" :key="col">{{ col }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in gatewayTableData.rows" :key="index">
+                  <td v-for="col in gatewayTableData.columns" :key="col" class="table-cell">
+                    {{ formatCellValue(row[col]) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="table-pagination">
+              <button 
+                class="btn btn-sm" 
+                @click="loadGatewayTableData(0)"
+                :disabled="gatewayTableData.offset === 0"
+              >
+                首页
+              </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadGatewayTableData(gatewayTableData.offset - gatewayTableData.limit)"
+                :disabled="gatewayTableData.offset === 0"
+              >
+                上一页
+              </button>
+              <span class="page-info">
+                第 {{ currentGatewayTablePage }} / {{ totalGatewayTablePages }} 页
+              </span>
+              <button 
+                class="btn btn-sm" 
+                @click="loadGatewayTableData(gatewayTableData.offset + gatewayTableData.limit)"
+                :disabled="gatewayTableData.offset + gatewayTableData.rows.length >= gatewayTableData.total"
+              >
+                下一页
+              </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadGatewayTableData(gatewayTableData.total - gatewayTableData.limit)"
+                :disabled="gatewayTableData.offset + gatewayTableData.rows.length >= gatewayTableData.total"
+              >
+                末页
+              </button>
+              <span class="total-info">共 {{ gatewayTableData.total }} 条</span>
+            </div>
+          </div>
+          <div v-else-if="selectedGatewayTable" class="empty-message">表中暂无数据</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeGatewayDbModal">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -387,6 +464,21 @@ const tableData = ref<{table: string; columns: string[]; rows: any[]; total: num
   primaryKey: 'id'
 })
 const loadingMainDb = ref(false)
+
+// Gateway database state
+const showGatewayDbModal = ref(false)
+const gatewayDbTables = ref<{name: string; count: number; columns: string[]}[]>([])
+const selectedGatewayTable = ref('')
+const gatewayTableData = ref<{table: string; columns: string[]; rows: any[]; total: number; limit: number; offset: number; primaryKey: string}>({
+  table: '',
+  columns: [],
+  rows: [],
+  total: 0,
+  limit: 100,
+  offset: 0,
+  primaryKey: 'id'
+})
+const loadingGatewayDb = ref(false)
 
 // 使用 fetchWithAuth 替代硬编码 URL
 
@@ -823,6 +915,76 @@ function closeMainDbModal() {
   }
 }
 
+async function viewGatewayDatabase() {
+  showGatewayDbModal.value = true
+  await loadGatewayDbTables()
+}
+
+async function loadGatewayDbTables() {
+  loadingGatewayDb.value = true
+  try {
+    const response = await fetchWithAuth('/api/gateway/tables')
+    const data = await response.json()
+    gatewayDbTables.value = data.tables || []
+  } catch (e: any) {
+    console.error('Failed to load gateway tables:', e)
+  } finally {
+    loadingGatewayDb.value = false
+  }
+}
+
+async function loadGatewayTableData(offset: number = 0) {
+  if (!selectedGatewayTable.value) return
+  
+  loadingGatewayDb.value = true
+  try {
+    const response = await fetchWithAuth(`/api/gateway/tables/${selectedGatewayTable.value}?limit=100&offset=${offset}`)
+    const data = await response.json()
+    if (data.error) {
+      toast.error(data.error)
+      return
+    }
+    gatewayTableData.value = {
+      table: data.table || '',
+      columns: data.columns || [],
+      rows: data.rows || [],
+      total: data.total || 0,
+      limit: data.limit || 100,
+      offset: data.offset || 0,
+      primaryKey: data.primaryKey || 'id'
+    }
+  } catch (e: any) {
+    console.error('Failed to load gateway table data:', e)
+    toast.error(`加载失败: ${e.message}`)
+  } finally {
+    loadingGatewayDb.value = false
+  }
+}
+
+const currentGatewayTablePage = computed(() => {
+  if (gatewayTableData.value.limit === 0) return 1
+  return Math.floor(gatewayTableData.value.offset / gatewayTableData.value.limit) + 1
+})
+
+const totalGatewayTablePages = computed(() => {
+  if (gatewayTableData.value.limit === 0) return 1
+  return Math.ceil(gatewayTableData.value.total / gatewayTableData.value.limit)
+})
+
+function closeGatewayDbModal() {
+  showGatewayDbModal.value = false
+  selectedGatewayTable.value = ''
+  gatewayTableData.value = {
+    table: '',
+    columns: [],
+    rows: [],
+    total: 0,
+    limit: 100,
+    offset: 0,
+    primaryKey: 'id'
+  }
+}
+
 onMounted(() => {
   loadMemories()
 })
@@ -1131,6 +1293,14 @@ onMounted(() => {
   gap: 12px;
   margin-bottom: 16px;
   align-items: center;
+}
+
+.readonly-hint {
+  font-size: 0.8rem;
+  color: #f9e2af;
+  padding: 4px 8px;
+  background: rgba(249, 226, 175, 0.1);
+  border-radius: 4px;
 }
 
 .category-select {

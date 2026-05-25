@@ -1,7 +1,31 @@
 <template>
   <div class="wechat-manager">
-    <!-- QR Code Section -->
-    <div v-if="chatStore.wechatConnections.length === 0" class="wechat-empty">
+    <!-- Connected State -->
+    <div v-if="chatStore.wechatConnections.length > 0" class="wechat-connected">
+      <div class="connected-header">
+        <span class="connected-label">✅ 微信已连接</span>
+      </div>
+      
+      <div class="connection-list">
+        <div 
+          v-for="conn in chatStore.wechatConnections" 
+          :key="conn.user_id"
+          class="connection-item"
+        >
+          <img :src="conn.avatar || defaultAvatar" class="connection-avatar" />
+          <div class="connection-info">
+            <p class="connection-name">{{ conn.nickname }}</p>
+            <p class="connection-id">ID: {{ conn.user_id.substring(0, 16) }}...</p>
+            <p class="connection-time">
+              连接时间: {{ formatTime(conn.connected_at) }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- QR Code Section (only when not connected) -->
+    <div v-else class="wechat-empty">
       <!-- QR Login Active -->
       <div v-if="qrStatus === 'pending' && qrCodeUrl" class="qrcode-display">
         <p class="qrcode-title">📱 微信扫码授权</p>
@@ -31,58 +55,24 @@
       </div>
     </div>
     
-    <div v-else class="wechat-connected">
-      <div class="connected-header">
-        <span class="connected-label">当前连接的微信账号</span>
-        <span class="connected-hint">（扫码新账号将替换当前连接）</span>
-      </div>
-      
-      <div class="connection-list">
-        <div 
-          v-for="conn in chatStore.wechatConnections" 
-          :key="conn.user_id"
-          class="connection-item"
-        >
-          <img :src="conn.avatar || defaultAvatar" class="connection-avatar" />
-          <div class="connection-info">
-            <p class="connection-name">{{ conn.nickname }}</p>
-            <p class="connection-id">ID: {{ conn.user_id.substring(0, 8) }}...</p>
-            <p class="connection-time">
-              连接时间: {{ formatTime(conn.connected_at) }}
-            </p>
-          </div>
-          <button class="btn btn-disconnect" @click="disconnectWeChat(conn.user_id)">
-            断开连接
-          </button>
-        </div>
-      </div>
-    </div>
-    
     <hr class="section-divider" />
     
-    <!-- WeChat Gateway Integration Status -->
+    <!-- Gateway Status -->
     <div class="integration-status-card">
       <div class="status-header">
         <span class="status-label">微信集成方式</span>
-        <span class="status-badge running">Gateway 集成</span>
+        <span class="status-badge" :class="gatewayStatus.connected ? 'running' : 'stopped'">
+          {{ gatewayStatus.connected ? '已连接' : '未连接' }}
+        </span>
       </div>
       <div class="status-details">
         <p class="status-info">
-          ✅ 通过 Hermes Gateway 连接微信<br>
-          💬 Gateway 自动处理并回复消息<br>
-          🔄 Desktop 同步显示 Gateway 会话
+          <span v-if="gatewayStatus.gateway_running">✅ Gateway 运行中</span>
+          <span v-else>⚠️ Gateway 未运行</span>
+          <br>
+          💬 Gateway 自动处理微信消息
         </p>
       </div>
-    </div>
-    
-    <!-- Command Guide -->
-    <div class="usage-guide">
-      <h4 class="guide-title">💡 Gateway 模式说明</h4>
-      <p class="hint">
-        Gateway 独立运行并自动处理微信消息。<br>
-        Desktop 从 Gateway 同步会话和消息显示。<br>
-        在微信中直接发送消息即可与 AI 对话。
-      </p>
     </div>
   </div>
 </template>
@@ -92,22 +82,23 @@ import { ref, onMounted, nextTick } from 'vue'
 import { fetchWithAuth } from '@/utils/api'
 import { useChatStore } from '@/stores/chat'
 import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
 import QRCode from 'qrcode'
 
 const chatStore = useChatStore()
 const toast = useToast()
-const confirm = useConfirm()
 
 const defaultAvatar = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40"%3E%3Ccircle cx="20" cy="20" r="20" fill="%2307C160"/%3E%3Ctext x="20" y="25" text-anchor="middle" fill="white" font-size="16"%3E微%3C/text%3E%3C/svg%3E'
 
-// QR Login state
 const qrStatus = ref('idle')
 const qrCodeUrl = ref('')
 const qrOperating = ref(false)
 const qrcodeCanvas = ref<HTMLCanvasElement | null>(null)
 
-// QR Login functions
+const gatewayStatus = ref({
+  gateway_running: false,
+  connected: false
+})
+
 async function startQRLogin() {
   qrOperating.value = true
   try {
@@ -118,7 +109,6 @@ async function startQRLogin() {
       qrStatus.value = 'pending'
       qrCodeUrl.value = data.qrcode_url
       
-      // Render QR code to canvas
       await nextTick()
       if (qrcodeCanvas.value && data.qrcode_url) {
         QRCode.toCanvas(qrcodeCanvas.value, data.qrcode_url, {
@@ -128,7 +118,6 @@ async function startQRLogin() {
         })
       }
       
-      // Poll for status
       pollQRStatus()
     } else {
       toast.error('生成二维码失败: ' + (data.message || '未知错误'))
@@ -142,93 +131,62 @@ async function startQRLogin() {
 }
 
 async function pollQRStatus() {
-  const maxPolls = 120 // 2 minutes
+  const maxPolls = 120
   let pollCount = 0
   
-  const poll = async () => {
-    if (pollCount >= maxPolls || qrStatus.value !== 'pending') {
-      return
-    }
-    
-    pollCount++
-    
+  while (pollCount < maxPolls) {
     try {
       const response = await fetchWithAuth('/api/wechat/qr-status')
       const data = await response.json()
       
       if (data.status === 'confirmed') {
         qrStatus.value = 'confirmed'
-        qrCodeUrl.value = ''
-        // Refresh connections
+        toast.success('微信授权成功！')
         await refreshWeChatConnections()
-      } else if (data.status === 'expired') {
-        qrStatus.value = 'expired'
-        qrCodeUrl.value = ''
-        toast.warning('二维码已过期，请重新生成')
-      } else if (data.status === 'pending') {
-        // Continue polling
-        setTimeout(poll, 1000)
+        return
       }
+      
+      if (data.status === 'expired' || data.status === 'error') {
+        qrStatus.value = 'expired'
+        toast.error('二维码已过期，请重新扫描')
+        return
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      pollCount++
     } catch (error) {
       console.error('Failed to poll QR status:', error)
-      setTimeout(poll, 2000)
+      break
     }
-  }
-  
-  poll()
-}
-
-async function cancelQRLogin() {
-  try {
-    await fetchWithAuth('/api/wechat/qr-cancel', { method: 'POST' })
-    qrStatus.value = 'idle'
-    qrCodeUrl.value = ''
-  } catch (error) {
-    console.error('Failed to cancel QR login:', error)
   }
 }
 
 async function refreshQRLogin() {
-  // Cancel current login
-  await cancelQRLogin()
-  
-  // Start new login
+  qrStatus.value = 'idle'
+  qrCodeUrl.value = ''
   await startQRLogin()
-}
-
-// WeChat connection functions
-async function disconnectWeChat(userId: string) {
-  const confirmed = await confirm.danger(
-    '确定要断开此微信连接吗？',
-    '断开连接'
-  )
-  
-  if (!confirmed) {
-    return
-  }
-  
-  try {
-    await fetchWithAuth('/api/wechat/disconnect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId })
-    })
-    
-    // Refresh connection list
-    await refreshWeChatConnections()
-  } catch (error) {
-    console.error('Failed to disconnect WeChat:', error)
-    toast.error('断开连接失败')
-  }
 }
 
 async function refreshWeChatConnections() {
   try {
     const response = await fetchWithAuth('/api/wechat/connections')
     const data = await response.json()
-    chatStore.wechatConnections = data.connections || []
+    chatStore.wechatConnections = Array.isArray(data) ? data : (data.connections || [])
   } catch (error) {
     console.error('Failed to refresh WeChat connections:', error)
+  }
+}
+
+async function checkGatewayStatus() {
+  try {
+    const response = await fetchWithAuth('/api/wechat/gateway/status')
+    const data = await response.json()
+    gatewayStatus.value = {
+      gateway_running: data.gateway_running || false,
+      connected: data.weixin_connected || false
+    }
+  } catch (error) {
+    console.error('Failed to check gateway status:', error)
   }
 }
 
@@ -253,6 +211,7 @@ function formatTime(timestamp?: number): string {
 
 onMounted(async () => {
   await refreshWeChatConnections()
+  await checkGatewayStatus()
 })
 </script>
 
@@ -263,9 +222,64 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
-/* QR Code Section */
 .wechat-empty {
   text-align: center;
+}
+
+.wechat-connected {
+  margin-bottom: 24px;
+}
+
+.connected-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.connected-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #a6e3a1;
+}
+
+.connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connection-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(7, 193, 96, 0.05);
+  border: 1px solid rgba(7, 193, 96, 0.2);
+  border-radius: 8px;
+}
+
+.connection-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #07C160;
+}
+
+.connection-info {
+  flex: 1;
+}
+
+.connection-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.connection-id,
+.connection-time {
+  font-size: 0.8rem;
+  color: #6c7086;
+  margin: 0;
 }
 
 .qrcode-display {
@@ -289,217 +303,62 @@ onMounted(async () => {
   display: block;
 }
 
-.qrcode-url {
-  font-size: 0.75rem;
-  color: #6c7086;
-  margin: 8px 0;
-  word-break: break-all;
+.qrcode-placeholder {
+  padding: 40px 20px;
+  text-align: center;
 }
 
-.btn-cancel {
-  background: #45475a;
+.qrcode-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.qrcode-title {
+  font-size: 1.1rem;
   color: #cdd6f4;
-  padding: 8px 20px;
+  margin-bottom: 20px;
+}
+
+.btn {
+  padding: 10px 24px;
   border-radius: 6px;
-  margin-top: 12px;
-}
-
-.btn-cancel:hover {
-  background: #585b70;
-}
-
-.btn-refresh {
-  display: block;
-  background: #89b4fa;
-  color: #1e1e2e;
-  padding: 8px 20px;
-  border-radius: 6px;
-  margin: 12px auto 0;
-}
-
-.btn-refresh:hover {
-  background: #74c7ec;
-}
-
-.btn-refresh:disabled {
-  background: #45475a;
-  color: #a6adc8;
-  cursor: not-allowed;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .btn-scan {
   background: #07C160;
   color: white;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-size: 1rem;
-  margin-top: 16px;
+  border: none;
 }
 
 .btn-scan:hover {
   background: #06a050;
 }
 
-.btn-scan:disabled {
+.btn-refresh {
   background: #45475a;
-  color: #a6adc8;
-  cursor: not-allowed;
-}
-
-.qrcode-placeholder {
-  padding: 40px 20px;
-  background: rgba(7, 193, 96, 0.05);
-  border: 2px dashed #07C160;
-  border-radius: 12px;
-  margin-bottom: 24px;
-}
-
-.qrcode-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-}
-
-.qrcode-title {
-  font-size: 1.1rem;
-  color: #e0e0e0;
-  margin: 0 0 8px;
-}
-
-.qrcode-hint {
-  font-size: 0.9rem;
-  color: #a0a0a0;
-  margin: 0;
-}
-
-/* Connected Section */
-.wechat-connected {
-  text-align: left;
-}
-
-.connected-header {
-  margin-bottom: 16px;
-}
-
-.connected-label {
-  font-size: 0.95rem;
   color: #cdd6f4;
-  font-weight: 500;
+  border: 1px solid #585b70;
 }
 
-.connected-hint {
-  font-size: 0.8rem;
-  color: #6c7086;
-  margin-left: 8px;
+.btn-refresh:hover {
+  background: #585b70;
 }
 
-.connection-list {
-  margin-bottom: 24px;
-}
-
-.connection-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: #181825;
-  border: 1px solid #313244;
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.connection-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #07C160;
-}
-
-.connection-info {
-  flex: 1;
-}
-
-.connection-name {
-  margin: 0;
-  font-size: 1rem;
-  color: #cdd6f4;
-  font-weight: 500;
-}
-
-.connection-id {
-  margin: 4px 0;
-  font-size: 0.85rem;
-  color: #a6adc8;
-}
-
-.connection-time {
-  margin: 4px 0 0;
-  font-size: 0.8rem;
-  color: #6c7086;
-}
-
-.btn-disconnect {
-  background: rgba(243, 139, 168, 0.1);
-  color: #f38ba8;
-  border: 1px solid #f38ba8;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.btn-disconnect:hover {
-  background: #f38ba8;
-  color: white;
-}
-
-.usage-guide {
-  padding: 16px;
-  background: rgba(137, 180, 250, 0.05);
-  border: 1px solid #45475a;
-  border-radius: 8px;
-}
-
-.guide-title {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
-  color: #89b4fa;
-}
-
-.command-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.command-list li {
-  margin: 6px 0;
-  font-size: 0.9rem;
-  color: #a6adc8;
-}
-
-.command-list code {
-  background: #313244;
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: #f9e2af;
-  font-family: monospace;
-}
-
-/* Divider */
 .section-divider {
   border: none;
   border-top: 1px solid #313244;
   margin: 24px 0;
 }
 
-.usage-guide .hint {
-  margin-top: 12px;
-  padding: 10px;
-  background: rgba(137, 180, 250, 0.1);
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: #89b4fa;
+.integration-status-card {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
 }
 
 .status-header {
@@ -510,8 +369,6 @@ onMounted(async () => {
 }
 
 .status-label {
-  font-size: 0.95rem;
-  color: #cdd6f4;
   font-weight: 500;
 }
 
@@ -519,7 +376,6 @@ onMounted(async () => {
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 0.8rem;
-  font-weight: 500;
 }
 
 .status-badge.running {
@@ -533,48 +389,32 @@ onMounted(async () => {
 }
 
 .status-details {
-  margin-bottom: 16px;
+  font-size: 0.9rem;
 }
 
 .status-info {
-  margin: 0;
-  font-size: 0.85rem;
   color: #a6adc8;
+  line-height: 1.6;
+  margin: 0;
 }
 
-.btn {
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
+.usage-guide {
+  background: rgba(137, 180, 250, 0.05);
+  border: 1px solid rgba(137, 180, 250, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.guide-title {
   font-size: 0.9rem;
-  transition: all 0.2s;
+  margin: 0 0 8px 0;
+  color: #89b4fa;
 }
 
-.btn-start {
-  background: #a6e3a1;
-  color: #1e1e2e;
-}
-
-.btn-start:hover {
-  background: #94e2d5;
-}
-
-.btn-stop {
-  background: #f38ba8;
-  color: #1e1e2e;
-}
-
-.btn-stop:hover {
-  background: #eba0ac;
-}
-
-.btn-refresh-status {
-  background: #45475a;
-  color: #cdd6f4;
-}
-
-.btn-refresh-status:hover {
-  background: #585b70;
+.hint {
+  font-size: 0.85rem;
+  color: #6c7086;
+  line-height: 1.6;
+  margin: 0;
 }
 </style>

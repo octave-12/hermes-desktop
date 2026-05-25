@@ -235,7 +235,7 @@
         <div class="modal-body">
           <div class="setting-group">
             <label class="setting-label">模型 ID *</label>
-            <input v-model="newModel.id" class="setting-input" placeholder="例如: gpt-4o, deepseek-chat" />
+            <input v-model="newModel.id" class="setting-input" placeholder="例如: gpt-4o, deepseek-v4-pro" />
           </div>
           <div class="setting-group">
             <label class="setting-label">提供商</label>
@@ -351,7 +351,7 @@ async function loadCurrentConfig() {
     if (response.ok) {
       const data = await response.json()
       localConfig.value = {
-        model: data.model || 'deepseek-chat',
+        model: data.model || 'deepseek-v4-pro',
         provider: data.provider || 'deepseek',
         temperature: data.temperature || 0.7,
         maxTokens: data.maxTokens || 2048

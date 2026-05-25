@@ -12,7 +12,10 @@
     </div>
 
     <!-- Messages -->
-    <div v-else class="messages-container" ref="messagesContainer">
+    <div v-else class="messages-container" ref="messagesContainer" @scroll="handleScroll">
+      <div v-if="currentSession?.hasMore" class="load-more">
+        <span class="load-more-text">↑ 上滑加载更多消息</span>
+      </div>
       <div
         v-for="msg in currentSession.messages"
         :key="msg.id"
@@ -140,6 +143,7 @@ const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
 const inputAreaHeight = ref(120)
 const isResizing = ref(false)
+const isLoadingMore = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
 
@@ -192,6 +196,22 @@ function scrollToBottom() {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
   })
+}
+
+function handleScroll() {
+  if (!messagesContainer.value || !currentSession.value || isLoadingMore.value) return
+  
+  const { scrollTop } = messagesContainer.value
+  
+  if (scrollTop < 100 && currentSession.value.hasMore && currentSession.value.messages.length > 0) {
+    isLoadingMore.value = true
+    const firstMessage = currentSession.value.messages[0]
+    chatStore.loadMoreMessages(currentSession.value.id, firstMessage.timestamp)
+    
+    setTimeout(() => {
+      isLoadingMore.value = false
+    }, 500)
+  }
 }
 
 function startResize(e: MouseEvent) {
@@ -259,6 +279,18 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px 16px;
+}
+
+.load-more {
+  text-align: center;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.load-more-text {
+  font-size: 0.8rem;
+  color: #6c7086;
+  opacity: 0.7;
 }
 
 /* ── Message rows ── */

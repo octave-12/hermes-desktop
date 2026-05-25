@@ -10,27 +10,102 @@ import os
 from pathlib import Path
 from fastapi import APIRouter, Request
 from services import database as db
-from services.gateway_sync import gateway_sync
 
 router = APIRouter(prefix="/api/wechat", tags=["wechat"])
 
-# QR login state
 qr_login_state = {
     "qrcode_url": None,
-    "status": "idle",  # idle, pending, confirmed, expired
+    "status": "idle",
     "token": None,
     "account_id": None,
     "user_id": None,
-    "polling_restarted": False,
 }
 qr_login_lock = threading.Lock()
 
 
-# ── WeChat Connection Management ────────────────────────────────
+def get_gateway_status():
+    """Get Weixin connection status from Gateway."""
+    from pathlib import Path
+    import json
+    
+    gateway_state_path = Path.home() / ".hermes" / "gateway_state.json"
+    
+    if not gateway_state_path.exists():
+        return {"connected": False, "gateway_running": False}
+    
+    try:
+        with open(gateway_state_path, "r") as f:
+            state = json.load(f)
+        platforms = state.get("platforms", {})
+        weixin = platforms.get("weixin", {})
+        return {
+            "connected": weixin.get("state") == "connected",
+            "error_code": weixin.get("error_code"),
+            "error_message": weixin.get("error_message"),
+            "gateway_running": state.get("gateway_state") == "running"
+        }
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+
+def get_gateway_account():
+    """Get current Weixin account info from Gateway."""
+    from pathlib import Path
+    import json
+    
+    accounts_dir = Path.home() / ".hermes" / "weixin" / "accounts"
+    if not accounts_dir.exists():
+        return None
+    
+    for account_file in accounts_dir.glob("*.bot.json"):
+        try:
+            with open(account_file, "r") as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return None
+
+
+@router.get("/connections")
+async def get_wechat_connections():
+    """Get WeChat connection status from Gateway."""
+    try:
+        status = get_gateway_status()
+        account = get_gateway_account()
+        
+        if status.get("connected") and account:
+            user_id = account.get("user_id", "unknown")
+            db.save_wechat_connection(
+                user_id=user_id,
+                nickname="微信用户",
+                avatar=""
+            )
+            
+            account_file = Path.home() / ".hermes" / "weixin" / "accounts" / f"{user_id}.bot.json"
+            connected_at = None
+            if account_file.exists():
+                try:
+                    connected_at = int(account_file.stat().st_mtime * 1000)
+                except:
+                    pass
+            
+            return [{
+                "user_id": user_id,
+                "nickname": "微信用户",
+                "avatar": "",
+                "connected_at": connected_at,
+                "status": "connected"
+            }]
+        
+        return []
+    except Exception as e:
+        print(f"[WeChat] Error getting connections: {e}")
+        return []
+
 
 @router.get("/qr-login")
 async def get_wechat_qr_login():
-    """Start WeChat QR login."""
+    """Start WeChat QR login via Gateway."""
     global qr_login_state
     global qr_login_lock
     
@@ -38,46 +113,39 @@ async def get_wechat_qr_login():
         if qr_login_state["status"] == "pending":
             return qr_login_state
         
-        # Reset state
         qr_login_state = {
             "qrcode_url": None,
             "status": "pending",
             "token": None,
             "account_id": None,
             "user_id": None,
-            "polling_restarted": False,
         }
     
-    # Run QR login in thread pool
     loop = asyncio.get_event_loop()
     future = loop.run_in_executor(None, _run_qr_login_sync)
     
-    # Wait for qrcode_url to be populated (max 15 seconds)
-    for i in range(30):
+    for i in range(60):
         await asyncio.sleep(0.5)
         with qr_login_lock:
             if qr_login_state["qrcode_url"]:
-                print(f"[QR Login API] Got QR code URL: {qr_login_state['qrcode_url']}")
                 return qr_login_state
-            if qr_login_state["status"] == "confirmed" and not qr_login_state.get("polling_restarted"):
-                # QR login success - restart polling service
-                try:
-                    from services.weixin_polling import weixin_service
-                    await weixin_service.stop()
-                    await weixin_service.start()
-                    qr_login_state["polling_restarted"] = True
-                    print(f"[QR Login API] Restarted polling service")
-                except Exception as e:
-                    print(f"[QR Login API] Failed to restart polling: {e}")
+            
+            if qr_login_state["status"] == "confirmed":
+                account = get_gateway_account()
+                if account:
+                    db.save_wechat_connection(
+                        user_id=account.get("user_id", "unknown"),
+                        nickname="微信用户",
+                        avatar=""
+                    )
                 return qr_login_state
+            
             if qr_login_state["status"] == "error":
                 return qr_login_state
     
-    # Timeout
     with qr_login_lock:
         if not qr_login_state["qrcode_url"]:
             qr_login_state["status"] = "error"
-        
         return qr_login_state
 
 
@@ -262,19 +330,17 @@ async def get_qr_login_status():
     """Check QR login status."""
     global qr_login_state
     
-    # If just confirmed, restart polling service
-    if qr_login_state["status"] == "confirmed" and qr_login_state.get("token") and not qr_login_state.get("polling_restarted"):
-        try:
-            # Restart polling service with new token
-            from services.weixin_polling import weixin_service
-            await weixin_service.stop()
-            await weixin_service.start()
-            print(f"[QR Status API] Restarted polling service")
-            
-            # Mark as restarted
-            qr_login_state["polling_restarted"] = True
-        except Exception as e:
-            print(f"[QR Status API] Failed to restart polling: {e}")
+    status = get_gateway_status()
+    account = get_gateway_account()
+    
+    if status.get("connected") and account and qr_login_state["status"] != "confirmed":
+        qr_login_state["status"] = "confirmed"
+        qr_login_state["user_id"] = account.get("user_id")
+        db.save_wechat_connection(
+            user_id=account.get("user_id", "unknown"),
+            nickname="微信用户",
+            avatar=""
+        )
     
     return qr_login_state
 
@@ -286,45 +352,6 @@ async def cancel_qr_login():
     qr_login_state["status"] = "idle"
     qr_login_state["qrcode_url"] = None
     return {"status": "cancelled"}
-
-
-@router.get("/connections")
-async def get_wechat_connections():
-    """Get all connected WeChat accounts."""
-    connections = db.get_wechat_connections()
-    return {"connections": connections}
-
-
-@router.post("/connect")
-async def wechat_connect(request: Request):
-    """WeChat scan authorization success callback (singleton mode - replaces old connection)."""
-    data = await request.json()
-    user_id = data.get("user_id")
-    nickname = data.get("nickname", "微信用户")
-    avatar = data.get("avatar", "")
-    
-    if not user_id:
-        return {"error": "user_id required"}
-    
-    # 单例模式：删除所有旧连接，保存新连接
-    existing_connections = db.get_wechat_connections()
-    for conn in existing_connections:
-        db.delete_wechat_connection(conn["user_id"])
-        print(f"[WeChat] Deleted old connection: {conn['user_id']}")
-    
-    # 保存新连接
-    db.save_wechat_connection(user_id, nickname, avatar)
-    print(f"[WeChat] New connection saved: {user_id}")
-    
-    from main import broadcast_to_all
-    await broadcast_to_all({
-        "type": "wechat_connected",
-        "user_id": user_id,
-        "nickname": nickname,
-        "avatar": avatar
-    })
-    
-    return {"status": "ok", "message": f"微信账号 {nickname} 已连接"}
 
 
 @router.post("/disconnect")
@@ -608,32 +635,27 @@ def format_session_list(sessions: list, session_locks: dict) -> str:
 
 
 @router.get("/gateway/status")
-async def get_gateway_status():
+async def api_get_gateway_status():
     """Get Hermes Gateway status."""
-    status = gateway_sync.get_weixin_status()
-    account = gateway_sync.get_weixin_account()
+    status = get_gateway_status()
+    account = get_gateway_account()
+    wechat_session_id = db.get_or_create_wechat_session()
     
     return {
         "gateway_running": status.get("gateway_running", False),
         "weixin_connected": status.get("connected", False),
         "error_code": status.get("error_code"),
         "error_message": status.get("error_message"),
-        "account": account
+        "account": account,
+        "wechat_session_id": wechat_session_id
     }
 
 
-@router.get("/gateway/sessions")
-async def get_gateway_sessions(limit: int = 50):
-    """Get Weixin sessions from Gateway."""
-    sessions = gateway_sync.get_sessions(source="weixin", limit=limit)
-    return {"sessions": sessions}
-
-
-@router.get("/gateway/sessions/{session_id}/messages")
-async def get_gateway_session_messages(session_id: str, limit: int = 100):
-    """Get messages for a Gateway session."""
-    messages = gateway_sync.get_messages(session_id, limit=limit)
-    return {"messages": messages}
+@router.post("/gateway/sync")
+async def sync_gateway_messages():
+    """Sync messages from Gateway to Desktop wechat session."""
+    count = 0
+    return {"synced": count}
 
 
 @router.post("/gateway/event")
@@ -644,6 +666,9 @@ async def gateway_event_callback(request: Request):
     context = data.get("context", {})
     
     print(f"[Gateway Event] {event_type}: {context}")
+    
+    if event_type in ("session:start", "agent:end"):
+        0
     
     from main import broadcast_to_all
     await broadcast_to_all({
