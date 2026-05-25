@@ -19,6 +19,10 @@ Desktop GUI client for Hermes Agent - 一个基于 Electron + Vue 3 的桌面 AI
 - 📋 **消息队列** - 单会话消息队列管理，支持查看和删除队列项
 - ⏱️ **超时优化** - API 模式 5 分钟超时，WebSocket 心跳 60 秒，避免频繁断开
 - 🔒 **安全增强** - SQL 白名单验证，防止注入攻击
+- 📱 **微信集成** - 支持 Hermes Gateway 微信个人版集成，扫码登录，消息同步
+- 🗃️ **Gateway 数据库浏览** - 可视化查看 Gateway 微信数据库（sessions、messages 表）
+- 🧹 **数据库优化** - 自动增量 VACUUM，定期回收空闲页，防止数据库膨胀
+- 🛑 **优雅停止** - 使用 SIGTERM 优雅停止服务，避免 SQLite WAL 损坏
 
 ## 📸 应用截图
 
