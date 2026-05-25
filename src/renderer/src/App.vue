@@ -60,7 +60,7 @@
               </span>
               <span v-if="session.lastAiMessage" class="session-preview">{{ truncateText(session.lastAiMessage, 40) }}</span>
             </div>
-            <div class="session-menu">
+            <div v-if="session.id !== 'wechat-session'" class="session-menu">
               <button
                 class="menu-btn"
                 @click.stop="toggleMenu(session.id)"
