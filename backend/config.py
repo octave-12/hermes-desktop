@@ -3,6 +3,25 @@ Hermes Desktop - Configuration
 """
 import os
 import sys
+from pathlib import Path
+
+# Load .env file from ~/.hermes/.env
+hermes_home = Path.home() / ".hermes"
+env_file = hermes_home / ".env"
+
+if env_file.exists():
+    with open(env_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                # Remove quotes
+                value = value.strip().strip('"').strip("'")
+                # Only set if not already defined
+                if key not in os.environ:
+                    os.environ[key] = value
 
 # Hermes Agent venv directory
 HERMES_VENV_DIR = os.environ.get(

@@ -101,8 +101,12 @@
       <div class="sidebar-footer">
         <div class="footer-row">
           <div class="status-group">
-            <div class="connection-status" :class="{ connected: chatStore.isConnected, reconnecting: chatStore.isReconnecting }">
-              <span class="status-dot"></span>
+            <div 
+              class="connection-status" 
+              :class="{ connected: chatStore.isConnected, reconnecting: chatStore.isReconnecting }"
+              title="连接状态"
+            >
+              <span class="status-dot" :class="{ wechat: chatStore.wechatConnections.length > 0 }"></span>
               <span class="status-text">
                 {{ chatStore.isConnected ? '在线' : (chatStore.isReconnecting ? '重连' : '离线') }}
               </span>
@@ -110,7 +114,7 @@
             <button 
               v-if="!chatStore.isConnected" 
               class="refresh-btn" 
-              @click="reconnect" 
+              @click.stop="reconnect" 
               :disabled="chatStore.isReconnecting"
               :class="{ rotating: chatStore.isReconnecting }"
               title="重新连接"
@@ -148,6 +152,12 @@
     
     <!-- Settings Modal -->
     <SettingsModal v-if="showSettings" @close="showSettings = false" />
+    
+    <!-- Toast -->
+    <Toast ref="toastRef" />
+    
+    <!-- Confirm Dialog -->
+    <ConfirmDialog ref="confirmRef" />
   </div>
 </template>
 
@@ -155,7 +165,11 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import SettingsModal from '@/components/SettingsModal.vue'
+import Toast from '@/components/Toast.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { fetchWithAuth, getWsUrl } from '@/utils/api'
+import { setToastInstance } from '@/composables/useToast'
+import { setConfirmInstance } from '@/composables/useConfirm'
 
 const chatStore = useChatStore()
 const showSettings = ref(false)
@@ -163,6 +177,8 @@ const currentModelName = ref('')
 const sidebarCollapsed = ref(false)
 const showSearch = ref(false)
 const searchQuery = ref('')
+const toastRef = ref<InstanceType<typeof Toast> | null>(null)
+const confirmRef = ref<InstanceType<typeof ConfirmDialog> | null>(null)
 
 const filteredSessions = computed(() => {
   if (!searchQuery.value.trim()) {
@@ -220,6 +236,16 @@ async function refreshModelName() {
 
 // Load current model on mount
 onMounted(async () => {
+  // Set toast instance
+  if (toastRef.value) {
+    setToastInstance(toastRef.value)
+  }
+  
+  // Set confirm instance
+  if (confirmRef.value) {
+    setConfirmInstance(confirmRef.value)
+  }
+  
   await refreshModelName()
   
   try {
@@ -650,6 +676,23 @@ onUnmounted(() => {
 .connection-status.reconnecting .status-dot {
   background: #f9e2af;
   animation: pulse 1s infinite;
+}
+
+/* WeChat connected indicator */
+.status-dot.wechat {
+  box-shadow: 0 0 4px #07C160;
+  position: relative;
+}
+
+.status-dot.wechat::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #07C160;
+  border-radius: 50%;
+  top: -2px;
+  right: -2px;
 }
 
 @keyframes pulse {

@@ -21,8 +21,7 @@
       >
             <!-- AI message: avatar left, bubble left -->
             <template v-if="msg.role === 'assistant'">
-              <div class="avatar ai-avatar">H</div>
-              <div class="bubble ai-bubble">
+              <div class="bubble ai-bubble" :class="msg.source">
                 <div class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
                 <div v-if="msg.toolCalls?.length" class="tool-calls">
                   <div v-for="(tc, idx) in msg.toolCalls" :key="idx" class="tool-call">
@@ -33,15 +32,22 @@
                     <pre v-if="tc.result" class="tool-result">{{ tc.result }}</pre>
                   </div>
                 </div>
+                <div v-if="msg.source === 'wechat'" class="source-badge wechat">
+                  <span class="source-icon">📱</span>
+                  <span class="source-label">微信</span>
+                </div>
               </div>
             </template>
 
             <!-- User message: bubble right -->
             <template v-else-if="msg.role === 'user'">
-              <div class="bubble user-bubble">
+              <div class="bubble user-bubble" :class="msg.source">
                 <div class="bubble-content">{{ msg.content }}</div>
+                <div v-if="msg.source === 'wechat'" class="source-badge wechat">
+                  <span class="source-icon">📱</span>
+                  <span class="source-label">微信</span>
+                </div>
               </div>
-              <div class="avatar user-avatar">Me</div>
             </template>
 
             <!-- System message: centered -->
@@ -136,12 +142,6 @@ const inputAreaHeight = ref(120)
 const isResizing = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
-
-const pendingCount = computed(() => {
-  if (!currentSession.value) return 0
-  const pending = chatStore.pendingMessages.get(currentSession.value.id)
-  return pending?.length || 0
-})
 
 function renderMarkdown(content: string): string {
   if (!content) return ''
@@ -324,6 +324,36 @@ onMounted(async () => {
   background: #313244;
   color: #cdd6f4;
   border-top-right-radius: 4px;
+}
+
+/* ── Message source badge ── */
+.source-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.7rem;
+}
+
+.source-badge.wechat {
+  color: #07C160;
+}
+
+.source-icon {
+  font-size: 0.8rem;
+}
+
+.source-label {
+  opacity: 0.8;
+}
+
+/* ── WeChat message indicator ── */
+.bubble.wechat {
+  border-left: 3px solid #07C160;
+  margin-left: -3px;
+  padding-left: 12px;
 }
 
 .bubble-content :deep(code) {

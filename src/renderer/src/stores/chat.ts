@@ -7,6 +7,7 @@ export interface Message {
   content: string
   timestamp: number
   toolCalls?: ToolCall[]
+  source?: 'desktop' | 'wechat'
 }
 
 export interface ToolCall {
@@ -32,6 +33,14 @@ export interface Session {
   needsReload?: boolean
 }
 
+export interface WeChatConnection {
+  user_id: string
+  nickname: string
+  avatar: string
+  connected_at?: number
+  status?: string
+}
+
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<Session[]>([])
   const currentSessionId = ref<string | null>(null)
@@ -39,6 +48,9 @@ export const useChatStore = defineStore('chat', () => {
   const isReconnecting = ref(false)
   const isLoading = ref(false)
   const ws = ref<WebSocket | null>(null)
+  
+  // WeChat connections
+  const wechatConnections = ref<WeChatConnection[]>([])
 
   // Pending messages queue (per session)
   const pendingMessages = ref<Map<string, string[]>>(new Map())
@@ -422,6 +434,75 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
       }
+      
+      // ── WeChat integration messages ──
+      case 'wechat_connected': {
+        const existing = wechatConnections.value.find(c => c.user_id === data.user_id)
+        if (!existing) {
+          wechatConnections.value.push({
+            user_id: data.user_id,
+            nickname: data.nickname,
+            avatar: data.avatar
+          })
+        }
+        break
+      }
+      
+      case 'wechat_disconnected': {
+        wechatConnections.value = wechatConnections.value.filter(
+          c => c.user_id !== data.user_id
+        )
+        break
+      }
+      
+      case 'new_message': {
+        // Message from WeChat or other sources
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (session) {
+          const exists = session.messages.some(m => m.id === data.message.id)
+          if (!exists) {
+            session.messages.push({
+              ...data.message,
+              timestamp: data.message.timestamp || Date.now()
+            })
+          }
+        }
+        break
+      }
+      
+      case 'chat_stream': {
+        // Streaming response from WeChat
+        const session = sessions.value.find((s) => s.id === data.session_id)
+        if (!session) break
+        
+        const msg = session.messages.find(m => m.id === data.message_id)
+        if (msg) {
+          msg.content += data.delta
+        } else {
+          session.messages.push({
+            id: data.message_id,
+            role: 'assistant',
+            content: data.delta,
+            source: data.source || 'wechat',
+            timestamp: Date.now()
+          })
+        }
+        break
+      }
+      
+      case 'session_created': {
+        // Session created from WeChat
+        const exists = sessions.value.some(s => s.id === data.session.id)
+        if (!exists) {
+          sessions.value.unshift({
+            id: data.session.id,
+            title: data.session.title,
+            messages: [],
+            createdAt: data.session.createdAt
+          })
+        }
+        break
+      }
     }
   }
 
@@ -549,6 +630,7 @@ export const useChatStore = defineStore('chat', () => {
     isReconnecting,
     isLoading,
     pendingMessages,
+    wechatConnections,
     createSession,
     deleteSession,
     switchSession,

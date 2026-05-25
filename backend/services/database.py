@@ -54,6 +54,15 @@ def init_db():
                 value   TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS wechat_connections (
+                user_id          TEXT PRIMARY KEY,
+                nickname         TEXT,
+                avatar           TEXT,
+                connected_at     INTEGER,
+                status           TEXT DEFAULT 'connected',
+                current_session_id TEXT
+            );
+
             -- Indexes for performance optimization
             
             -- Sessions table indexes
@@ -79,6 +88,20 @@ def init_db():
             conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
+        
+        # Migration: add source column to messages if missing
+        try:
+            conn.execute("ALTER TABLE messages ADD COLUMN source TEXT DEFAULT 'desktop'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        
+        # Create index for source column (after migration)
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_source ON messages(source)")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # index already exists
 
 
 # ── Session operations ────────────────────────────────────────
@@ -125,14 +148,15 @@ def add_message(
     content: str,
     tool_calls: Optional[list] = None,
     timestamp: Optional[int] = None,
+    source: str = "desktop",
 ):
     ts = timestamp or int(time.time() * 1000)
     tc_json = json.dumps(tool_calls) if tool_calls else None
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO messages (id, session_id, role, content, tool_calls, timestamp) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (message_id, session_id, role, content, tc_json, ts),
+            "INSERT INTO messages (id, session_id, role, content, tool_calls, timestamp, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (message_id, session_id, role, content, tc_json, ts, source),
         )
         conn.commit()
 
@@ -150,7 +174,7 @@ def update_message_content(message_id: str, content: str, tool_calls: Optional[l
 def get_session_messages(session_id: str) -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT id, role, content, tool_calls, timestamp FROM messages "
+            "SELECT id, role, content, tool_calls, timestamp, source FROM messages "
             "WHERE session_id = ? ORDER BY timestamp ASC",
             (session_id,),
         ).fetchall()
@@ -161,6 +185,7 @@ def get_session_messages(session_id: str) -> list[dict]:
             "role": r["role"],
             "content": r["content"],
             "timestamp": r["timestamp"],
+            "source": r["source"] if r["source"] else "desktop",
         }
         if r["tool_calls"]:
             msg["toolCalls"] = json.loads(r["tool_calls"])
@@ -251,3 +276,64 @@ def get_hermes_default_model() -> str:
     
     # Fallback to default
     return "deepseek-v4-flash"
+
+
+# ── WeChat connection operations ────────────────────────────────
+
+def save_wechat_connection(user_id: str, nickname: str, avatar: str):
+    """Save or update a WeChat connection."""
+    now = int(time.time() * 1000)
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO wechat_connections 
+            (user_id, nickname, avatar, connected_at, status)
+            VALUES (?, ?, ?, ?, 'connected')
+        """, (user_id, nickname, avatar, now))
+        conn.commit()
+
+
+def get_wechat_connections() -> list[dict]:
+    """Get all connected WeChat accounts."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT user_id, nickname, avatar, connected_at, status "
+            "FROM wechat_connections WHERE status = 'connected'"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def disconnect_wechat(user_id: str):
+    """Mark a WeChat connection as disconnected."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE wechat_connections SET status = 'disconnected' WHERE user_id = ?",
+            (user_id,)
+        )
+        conn.commit()
+
+
+def delete_wechat_connection(user_id: str):
+    """Delete a WeChat connection record."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM wechat_connections WHERE user_id = ?", (user_id,))
+        conn.commit()
+
+
+def set_wechat_current_session(user_id: str, session_id: str):
+    """Set current session for a WeChat user."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE wechat_connections SET current_session_id = ? WHERE user_id = ?",
+            (session_id, user_id)
+        )
+        conn.commit()
+
+
+def get_wechat_current_session(user_id: str) -> Optional[str]:
+    """Get current session ID for a WeChat user."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT current_session_id FROM wechat_connections WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()
+        return row["current_session_id"] if row else None

@@ -6,7 +6,6 @@ import json
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,6 +16,8 @@ from services.model_config import model_config_manager
 from services.env_manager import env_manager
 from services.memory_manager import memory_manager
 from services.auth import init_auth_token, get_auth_token, auth_middleware
+from services.wechat_gateway import router as wechat_router
+from services.gateway_sync import gateway_sync
 
 
 @asynccontextmanager
@@ -25,6 +26,14 @@ async def lifespan(app: FastAPI):
     token = init_auth_token()
     print(f"[AUTH] Authentication token initialized: {token[:8]}...")
     print("[DB] Database initialized")
+    
+    print("[WeChat] 使用 Hermes Gateway 集成模式")
+    status = gateway_sync.get_weixin_status()
+    if status.get("gateway_running"):
+        print(f"[WeChat] Gateway 运行中，微信状态: {status.get('connected', False)}")
+    else:
+        print("[WeChat] Gateway 未运行，请先启动: hermes gateway run")
+    
     yield
 
 
@@ -48,11 +57,167 @@ app.middleware("http")(auth_middleware)
 
 hermes_service = HermesService()
 
+# ── Session Locks and Unified Queue Management ───────────────────
+session_locks: dict[str, asyncio.Lock] = {}
+active_websockets: list[WebSocket] = []
+unified_session_queues: dict[str, list] = {}  # Global unified queue
+active_chats_global: dict[str, asyncio.Task] = {}  # Global active chats
+waiting_sessions_global: list[str] = []  # Global waiting sessions
+
+async def get_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create a lock for a session."""
+    if session_id not in session_locks:
+        session_locks[session_id] = asyncio.Lock()
+    return session_locks[session_id]
+
+async def broadcast_to_all(message: dict):
+    """Broadcast message to all connected WebSocket clients."""
+    disconnected = []
+    for ws in active_websockets[:]:
+        try:
+            await ws.send_text(json.dumps(message))
+        except:
+            disconnected.append(ws)
+    
+    # Remove disconnected clients
+    for ws in disconnected:
+        if ws in active_websockets:
+            active_websockets.remove(ws)
+
+async def enqueue_message_global(session_id: str, content: str, user_msg_id: str, source: str = "desktop"):
+    """
+    Unified message enqueue function (used by both WebSocket and WeChat).
+    This is the global entry point for all message processing.
+    """
+    # Get session lock
+    lock = await get_session_lock(session_id)
+    
+    # Initialize queue if needed
+    if session_id not in unified_session_queues:
+        unified_session_queues[session_id] = []
+    
+    # Add message to queue
+    unified_session_queues[session_id].append((content, user_msg_id, source))
+    queue_length = len(unified_session_queues[session_id])
+    
+    # Notify all clients about queue update
+    if queue_length > 1:
+        await broadcast_to_all({
+            "type": "queue_updated",
+            "session_id": session_id,
+            "queue_length": queue_length,
+            "queue_items": [
+                {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
+                for c, msg_id, s in unified_session_queues[session_id]
+            ]
+        })
+    
+    # Check if session is already active
+    if session_id in active_chats_global:
+        return  # Already processing
+    
+    # Check concurrent limit
+    MAX_CONCURRENT = 10
+    if len(active_chats_global) >= MAX_CONCURRENT:
+        if session_id not in waiting_sessions_global:
+            waiting_sessions_global.append(session_id)
+            await broadcast_to_all({
+                "type": "session_waiting",
+                "session_id": session_id,
+                "reason": f"并发会话数已达上限 ({MAX_CONCURRENT})，等待中..."
+            })
+        return
+    
+    # Start processing
+    task = asyncio.create_task(process_session_queue_global(session_id))
+    active_chats_global[session_id] = task
+
+async def process_session_queue_global(session_id: str):
+    """Process messages in session queue sequentially (global version)."""
+    if session_id not in unified_session_queues:
+        return
+    
+    queue = unified_session_queues[session_id]
+    lock = await get_session_lock(session_id)
+    
+    while queue:
+        # Get next message
+        content, user_msg_id, source = queue.pop(0)
+        
+        # Acquire lock
+        async with lock:
+            try:
+                # Notify user message
+                await broadcast_to_all({
+                    "type": "user_message",
+                    "session_id": session_id,
+                    "message_id": user_msg_id,
+                    "content": content,
+                    "source": source
+                })
+                
+                # Notify queue status
+                remaining = len(queue)
+                if remaining > 0:
+                    await broadcast_to_all({
+                        "type": "queue_updated",
+                        "session_id": session_id,
+                        "queue_length": remaining,
+                        "queue_items": [
+                            {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
+                            for c, msg_id, s in queue
+                        ]
+                    })
+                
+                # Process with Hermes
+                async for chunk in hermes_service.chat(session_id, content, user_msg_id):
+                    chunk["session_id"] = session_id
+                    chunk["source"] = source
+                    await broadcast_to_all(chunk)
+                
+                await broadcast_to_all({
+                    "type": "message_done",
+                    "session_id": session_id,
+                    "message_id": user_msg_id
+                })
+                
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                await broadcast_to_all({
+                    "type": "error",
+                    "session_id": session_id,
+                    "message": str(e)
+                })
+    
+    # Cleanup
+    if session_id in active_chats_global:
+        del active_chats_global[session_id]
+    
+    await broadcast_to_all({
+        "type": "queue_updated",
+        "session_id": session_id,
+        "queue_length": 0,
+        "queue_items": []
+    })
+    
+    # Start next waiting session
+    if waiting_sessions_global:
+        next_session_id = waiting_sessions_global.pop(0)
+        if next_session_id in unified_session_queues and unified_session_queues[next_session_id]:
+            task = asyncio.create_task(process_session_queue_global(next_session_id))
+            active_chats_global[next_session_id] = task
+
+# ── Register WeChat Router ───────────────────────────────────────
+app.include_router(wechat_router)
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "hermes-desktop-backend"}
 
+
+# ── Auth API ────────────────────────────────────────────────────
 
 @app.get("/api/auth/token")
 async def get_auth_token_endpoint():
@@ -463,7 +628,8 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
     allowed_tables = {
         'sessions': {'pk': 'id', 'order': 'created_at DESC'},
         'messages': {'pk': 'id', 'order': 'timestamp DESC'}, 
-        'config': {'pk': 'key', 'order': 'key ASC'}
+        'config': {'pk': 'key', 'order': 'key ASC'},
+        'wechat_connections': {'pk': 'user_id', 'order': 'connected_at DESC'}
     }
     
     if table_name not in allowed_tables:
@@ -511,7 +677,8 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
                 "rows": data,
                 "total": total,
                 "limit": limit,
-                "offset": offset
+                "offset": offset,
+                "primaryKey": allowed_tables[table_name]['pk']
             }
     except Exception as e:
         return {"error": str(e)}
@@ -524,7 +691,8 @@ async def delete_table_row(table_name: str, row_id: str):
     allowed_tables = {
         'sessions': 'id',
         'messages': 'id',
-        'config': 'key'
+        'config': 'key',
+        'wechat_connections': 'user_id'
     }
     
     if table_name not in allowed_tables:
@@ -547,12 +715,13 @@ async def delete_table_row(table_name: str, row_id: str):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    active_websockets.append(websocket)
     print("[WS] Client connected")
     
     # Active chat tasks and message queues per session
     active_chats = {}
-    session_queues = {}  # session_id -> message queue
-    waiting_sessions = []  # Sessions waiting for concurrent slot
+    session_queues = {}
+    waiting_sessions = []
     MAX_CONCURRENT_SESSIONS = 10
 
     def validate_message(msg: dict, required_fields: list, max_size: int = 10000) -> bool:
@@ -581,59 +750,69 @@ async def websocket_endpoint(websocket: WebSocket):
             return
         
         queue = session_queues[session_id]
+        lock = await get_session_lock(session_id)
         
         while queue:
             # Get next message from queue
-            content, user_msg_id = queue.pop(0)
+            content, user_msg_id, source = queue.pop(0)
             
-            try:
-                # Notify client to display user message
-                await websocket.send_text(json.dumps({
-                    "type": "user_message",
-                    "session_id": session_id,
-                    "message_id": user_msg_id,
-                    "content": content
-                }))
-                
-                # Notify client about remaining queue (after removing current message)
-                remaining = len(queue)
-                if remaining > 0:
-                    await websocket.send_text(json.dumps({
-                        "type": "queue_updated",
+            # Acquire lock for this session
+            async with lock:
+                try:
+                    # Notify client to display user message
+                    await broadcast_to_all({
+                        "type": "user_message",
                         "session_id": session_id,
-                        "queue_length": remaining,
-                        "queue_items": [
-                            {"user_msg_id": msg_id, "content_preview": c[:50]}
-                            for c, msg_id in queue
-                        ]
-                    }))
-                
-                async for chunk in hermes_service.chat(session_id, content, user_msg_id):
-                    chunk["session_id"] = session_id
-                    await websocket.send_text(json.dumps(chunk))
-                
-                await websocket.send_text(json.dumps({"type": "message_done", "session_id": session_id}))
-                
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                await websocket.send_text(json.dumps({
-                    "type": "error",
-                    "session_id": session_id,
-                    "message": str(e)
-                }))
+                        "message_id": user_msg_id,
+                        "content": content,
+                        "source": source
+                    })
+                    
+                    # Notify client about remaining queue (after removing current message)
+                    remaining = len(queue)
+                    if remaining > 0:
+                        await broadcast_to_all({
+                            "type": "queue_updated",
+                            "session_id": session_id,
+                            "queue_length": remaining,
+                            "queue_items": [
+                                {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
+                                for c, msg_id, s in queue
+                            ]
+                        })
+                    
+                    # Process with Hermes
+                    async for chunk in hermes_service.chat(session_id, content, user_msg_id):
+                        chunk["session_id"] = session_id
+                        chunk["source"] = source
+                        await broadcast_to_all(chunk)
+                    
+                    await broadcast_to_all({
+                        "type": "message_done",
+                        "session_id": session_id,
+                        "message_id": user_msg_id
+                    })
+                    
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    await broadcast_to_all({
+                        "type": "error",
+                        "session_id": session_id,
+                        "message": str(e)
+                    })
         
         # Remove from active chats when queue is empty
         if session_id in active_chats:
             del active_chats[session_id]
         
         # Notify queue is empty
-        await websocket.send_text(json.dumps({
+        await broadcast_to_all({
             "type": "queue_updated",
             "session_id": session_id,
             "queue_length": 0,
             "queue_items": []
-        }))
+        })
         
         # Start next waiting session if any
         if waiting_sessions:
@@ -648,45 +827,48 @@ async def websocket_endpoint(websocket: WebSocket):
             return
         
         # Find and remove the message
-        for i, (content, msg_id) in enumerate(session_queues[session_id]):
+        for i, (content, msg_id, source) in enumerate(session_queues[session_id]):
             if msg_id == user_msg_id:
                 session_queues[session_id].pop(i)
                 break
         
         # Notify client about updated queue
         queue_length = len(session_queues[session_id])
-        await websocket.send_text(json.dumps({
+        await broadcast_to_all({
             "type": "queue_updated",
             "session_id": session_id,
             "queue_length": queue_length,
             "queue_items": [
-                {"user_msg_id": msg_id, "content_preview": content[:50]}
-                for content, msg_id in session_queues[session_id]
+                {"user_msg_id": msg_id, "content_preview": content[:50], "source": s}
+                for content, msg_id, s in session_queues[session_id]
             ]
-        }))
+        })
 
-    async def enqueue_message(session_id: str, content: str, user_msg_id: str):
+    async def enqueue_message(session_id: str, content: str, user_msg_id: str, source: str = "desktop"):
         """Add message to session queue and start processing if not already active."""
         try:
+            # Get session lock to prevent concurrent access
+            lock = await get_session_lock(session_id)
+            
             # Initialize queue if needed
             if session_id not in session_queues:
                 session_queues[session_id] = []
             
-            # Add message to queue
-            session_queues[session_id].append((content, user_msg_id))
+            # Add message to queue with source info
+            session_queues[session_id].append((content, user_msg_id, source))
             queue_length = len(session_queues[session_id])
             
-            # Only notify client if queue has multiple messages (backlog)
+            # Notify all clients about queue update
             if queue_length > 1:
-                await websocket.send_text(json.dumps({
+                await broadcast_to_all({
                     "type": "queue_updated",
                     "session_id": session_id,
                     "queue_length": queue_length,
                     "queue_items": [
-                        {"user_msg_id": msg_id, "content_preview": content[:50]}
-                        for content, msg_id in session_queues[session_id]
+                        {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
+                        for c, msg_id, s in session_queues[session_id]
                     ]
-                }))
+                })
             
             # Check if session is already active
             if session_id in active_chats:
@@ -808,12 +990,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 content = message["content"]
                 user_msg_id = message.get("message_id", str(uuid.uuid4()))
 
-                # Enqueue message (non-blocking)
-                await enqueue_message(session_id, content, user_msg_id)
+                # Use global unified queue
+                await enqueue_message_global(session_id, content, user_msg_id, source="desktop")
 
     except WebSocketDisconnect:
+        if websocket in active_websockets:
+            active_websockets.remove(websocket)
         print("[WS] Client disconnected")
     except Exception as e:
+        if websocket in active_websockets:
+            active_websockets.remove(websocket)
         print(f"[WS] Error: {e}")
         try:
             await websocket.send_text(

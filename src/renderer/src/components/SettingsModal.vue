@@ -22,6 +22,13 @@
         >
           🧠 记忆管理
         </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'wechat' }"
+          @click="activeTab = 'wechat'"
+        >
+          📱 微信连接
+        </button>
       </div>
 
       <div class="modal-body">
@@ -150,6 +157,11 @@
         <div v-if="activeTab === 'memory'">
           <MemoryManager />
         </div>
+        
+        <!-- WeChat Connection Tab -->
+        <div v-if="activeTab === 'wechat'">
+          <WeChatManager />
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -256,7 +268,10 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { fetchWithAuth } from '@/utils/api'
 import { useSettingsStore, type ModelProfile, type DeepSeekSettings } from '@/stores/settings'
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import MemoryManager from './MemoryManager.vue'
+import WeChatManager from './WeChatManager.vue'
 
 const emit = defineEmits<{
   close: []
@@ -267,8 +282,10 @@ const props = defineProps<{
 }>()
 
 const settingsStore = useSettingsStore()
+const toast = useToast()
+const confirm = useConfirm()
 
-const activeTab = ref<'model' | 'memory'>('model')
+const activeTab = ref<'model' | 'memory' | 'wechat'>('model')
 
 const localConfig = ref({
   model: '',
@@ -437,7 +454,7 @@ async function saveSettings() {
     emit('close')
   } catch (error) {
     console.error('Failed to save settings:', error)
-    alert('保存设置失败，请重试')
+    toast.error('保存设置失败，请重试')
   } finally {
     saving.value = false
   }
@@ -455,12 +472,12 @@ function closeAddModel() {
 
 async function addCustomModel() {
   if (!newModel.value.id) {
-    alert('请填写模型 ID')
+    toast.warning('请填写模型 ID')
     return
   }
   
   if (!newModel.value.apiKey) {
-    alert('请输入 API Key')
+    toast.warning('请输入 API Key')
     return
   }
   
@@ -486,18 +503,23 @@ async function addCustomModel() {
       await loadModels()
       closeAddModel()
     } else {
-      alert('添加模型失败')
+      toast.error('添加模型失败')
     }
   } catch (error) {
     console.error('Failed to add model:', error)
-    alert('添加模型失败')
+    toast.error('添加模型失败')
   } finally {
     addingModel.value = false
   }
 }
 
 async function confirmDeleteModel(modelId: string, modelName: string) {
-  if (!confirm(`确定要删除模型 "${modelName}" 吗？\n\n这将同时删除：\n- 模型配置\n- API Key\n- API URL`)) {
+  const confirmed = await confirm.danger(
+    `确定要删除模型 "${modelName}" 吗？\n\n这将同时删除：\n- 模型配置\n- API Key\n- API URL`,
+    '删除模型'
+  )
+  
+  if (!confirmed) {
     return
   }
   
@@ -520,32 +542,38 @@ async function confirmDeleteModel(modelId: string, modelName: string) {
         showModelSelector.value = false
       }
     } else {
-      alert('删除模型失败')
+      toast.error('删除模型失败')
     }
   } catch (error) {
     console.error('Failed to delete model:', error)
-    alert('删除模型失败')
+    toast.error('删除模型失败')
   }
 }
 
 async function restartAllServices() {
-  if (!confirm('确定要重启所有服务吗？这将关闭并重新启动客户端和后端服务。')) {
+  const confirmed = await confirm.warning(
+    '确定要重启所有服务吗？\n\n这将重启：\n- 后端服务\n- 前端服务',
+    '重启服务'
+  )
+  
+  if (!confirmed) {
     return
   }
 
   restarting.value = true
   try {
+    // 重启所有服务（会重启后端和前端）
     const result = await (window as any).api.restartAll()
     
     if (result.success) {
       console.log('[Restart] Restart initiated')
     } else {
-      alert('重启失败: ' + (result.error || '未知错误'))
+      toast.error('重启失败: ' + (result.error || '未知错误'))
       restarting.value = false
     }
   } catch (error) {
     console.error('[Restart] Failed to restart:', error)
-    alert('重启服务失败，请手动重启')
+    toast.error('重启服务失败，请手动重启')
     restarting.value = false
   }
 }

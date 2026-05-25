@@ -243,7 +243,7 @@
                   <td>
                     <button 
                       class="btn btn-sm btn-danger" 
-                      @click="deleteTableRow(row.id)"
+                      @click="deleteTableRow(row[tableData.primaryKey])"
                       title="删除"
                     >
                       🗑️
@@ -307,6 +307,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { fetchWithAuth } from '@/utils/api'
+import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
+
+const toast = useToast()
+const confirm = useConfirm()
 
 interface Memory {
   id: string
@@ -372,13 +377,14 @@ const dbEntryForm = ref({
 const showMainDbModal = ref(false)
 const mainDbTables = ref<{name: string; count: number; columns: string[]}[]>([])
 const selectedTable = ref('')
-const tableData = ref<{table: string; columns: string[]; rows: any[]; total: number; limit: number; offset: number}>({
+const tableData = ref<{table: string; columns: string[]; rows: any[]; total: number; limit: number; offset: number; primaryKey: string}>({
   table: '',
   columns: [],
   rows: [],
   total: 0,
   limit: 100,
-  offset: 0
+  offset: 0,
+  primaryKey: 'id'
 })
 const loadingMainDb = ref(false)
 
@@ -470,7 +476,12 @@ async function editMemory(memory: Memory) {
 
 async function deleteEntry(entryIndex: number) {
   if (!selectedMemory.value) return
-  if (!confirm(`确定要删除第 ${entryIndex + 1} 条记录吗？`)) return
+  
+  const confirmed = await confirm.danger(
+    `确定要删除第 ${entryIndex + 1} 条记录吗？`,
+    '删除记录'
+  )
+  if (!confirmed) return
   
   try {
     const response = await fetchWithAuth(
@@ -481,15 +492,19 @@ async function deleteEntry(entryIndex: number) {
     if (data.status === 'ok') {
       await viewMemory(selectedMemory.value)
     } else {
-      alert('删除失败')
+      toast.error('删除失败')
     }
   } catch (e: any) {
-    alert(`删除失败: ${e.message}`)
+    toast.error(`删除失败: ${e.message}`)
   }
 }
 
 async function confirmDeleteAll(memory: Memory) {
-  if (!confirm(`确定要清空 ${memory.name} 的所有内容吗？此操作不可恢复。`)) return
+  const confirmed = await confirm.danger(
+    `确定要清空 ${memory.name} 的所有内容吗？\n\n此操作不可恢复。`,
+    '清空记忆'
+  )
+  if (!confirmed) return
   
   try {
     const response = await fetchWithAuth(`/api/memories/${memory.id}`, {
@@ -499,10 +514,10 @@ async function confirmDeleteAll(memory: Memory) {
     if (data.status === 'ok') {
       await loadMemories()
     } else {
-      alert('清空失败')
+      toast.error('清空失败')
     }
   } catch (e: any) {
-    alert(`清空失败: ${e.message}`)
+    toast.error(`清空失败: ${e.message}`)
   }
 }
 
@@ -521,10 +536,10 @@ async function saveMemory() {
       closeEditModal()
       await loadMemories()
     } else {
-      alert('保存失败')
+      toast.error('保存失败')
     }
   } catch (e: any) {
-    alert(`保存失败: ${e.message}`)
+    toast.error(`保存失败: ${e.message}`)
   } finally {
     saving.value = false
   }
@@ -623,7 +638,7 @@ async function saveDbEntry() {
       })
       const data = await response.json()
       if (data.status !== 'ok') {
-        alert('更新失败')
+        toast.error('更新失败')
         return
       }
     } else {
@@ -640,7 +655,7 @@ async function saveDbEntry() {
       })
       const data = await response.json()
       if (data.status !== 'ok') {
-        alert('添加失败')
+        toast.error('添加失败')
         return
       }
     }
@@ -649,14 +664,18 @@ async function saveDbEntry() {
     await loadDbCategories()
     await loadDbEntries()
   } catch (e: any) {
-    alert(`保存失败: ${e.message}`)
+    toast.error(`保存失败: ${e.message}`)
   } finally {
     savingDb.value = false
   }
 }
 
 async function deleteDbEntry(entryId: number) {
-  if (!confirm(`确定要删除这条记忆吗？`)) return
+  const confirmed = await confirm.danger(
+    '确定要删除这条记忆吗？',
+    '删除记忆'
+  )
+  if (!confirmed) return
   
   try {
     const response = await fetchWithAuth(`/api/memories/database/entries/${entryId}`, {
@@ -667,10 +686,10 @@ async function deleteDbEntry(entryId: number) {
       await loadDbCategories()
       await loadDbEntries()
     } else {
-      alert('删除失败')
+      toast.error('删除失败')
     }
   } catch (e: any) {
-    alert(`删除失败: ${e.message}`)
+    toast.error(`删除失败: ${e.message}`)
   }
 }
 
@@ -701,7 +720,7 @@ async function loadTableData(offset: number = 0) {
     const response = await fetchWithAuth(`/api/database/tables/${selectedTable.value}?limit=100&offset=${offset}`)
     const data = await response.json()
     if (data.error) {
-      alert(data.error)
+      toast.error(data.error)
       return
     }
     tableData.value = {
@@ -710,31 +729,54 @@ async function loadTableData(offset: number = 0) {
       rows: data.rows || [],
       total: data.total || 0,
       limit: data.limit || 100,
-      offset: data.offset || 0
+      offset: data.offset || 0,
+      primaryKey: data.primaryKey || 'id'
     }
   } catch (e: any) {
     console.error('Failed to load table data:', e)
-    alert(`加载失败: ${e.message}`)
+    toast.error(`加载失败: ${e.message}`)
   } finally {
     loadingMainDb.value = false
   }
 }
 
 async function deleteTableRow(rowId: string) {
-  if (!confirm(`确定要删除这条记录吗？\nID: ${rowId}`)) return
+  console.log('[Delete] Attempting to delete:', { 
+    table: selectedTable.value, 
+    rowId, 
+    primaryKey: tableData.value.primaryKey,
+    encodedRowId: encodeURIComponent(rowId)
+  })
+  
+  const confirmed = await confirm.danger(
+    `确定要删除这条记录吗？\n\nID: ${rowId}`,
+    '删除记录'
+  )
+  if (!confirmed) {
+    console.log('[Delete] User cancelled')
+    return
+  }
   
   try {
-    const response = await fetchWithAuth(`/api/database/tables/${selectedTable.value}/${rowId}`, {
+    const encodedRowId = encodeURIComponent(rowId)
+    const url = `/api/database/tables/${selectedTable.value}/${encodedRowId}`
+    console.log('[Delete] Sending request to:', url)
+    
+    const response = await fetchWithAuth(url, {
       method: 'DELETE'
     })
     const data = await response.json()
+    console.log('[Delete] Response:', data)
+    
     if (data.status === 'ok') {
+      toast.success('删除成功')
       await loadTableData(tableData.value.offset)
     } else {
-      alert('删除失败')
+      toast.error(data.error || '删除失败')
     }
   } catch (e: any) {
-    alert(`删除失败: ${e.message}`)
+    console.error('[Delete] Error:', e)
+    toast.error(`删除失败: ${e.message}`)
   }
 }
 
@@ -776,7 +818,8 @@ function closeMainDbModal() {
     rows: [],
     total: 0,
     limit: 100,
-    offset: 0
+    offset: 0,
+    primaryKey: 'id'
   }
 }
 
