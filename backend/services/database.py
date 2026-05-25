@@ -476,7 +476,6 @@ def get_gateway_messages(limit: int = 100, offset: int = 0) -> list[dict]:
             FROM messages m
             JOIN sessions s ON m.session_id = s.id
             WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant')
-              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
             ORDER BY m.timestamp DESC
             LIMIT ? OFFSET ?
             """,
@@ -494,9 +493,24 @@ def get_gateway_messages(limit: int = 100, offset: int = 0) -> list[dict]:
             }
             if r["tool_calls"]:
                 try:
-                    msg["toolCalls"] = json.loads(r["tool_calls"])
-                except:
-                    pass
+                    raw_tool_calls = json.loads(r["tool_calls"])
+                    tool_calls = []
+                    for tc in raw_tool_calls:
+                        tool_call = {
+                            "name": tc.get("function", {}).get("name", "unknown"),
+                            "status": "completed",
+                        }
+                        args = tc.get("function", {}).get("arguments", "")
+                        if args:
+                            try:
+                                args_obj = json.loads(args)
+                                tool_call["result"] = json.dumps(args_obj, indent=2, ensure_ascii=False)
+                            except:
+                                tool_call["result"] = args
+                        tool_calls.append(tool_call)
+                    msg["toolCalls"] = tool_calls
+                except Exception as e:
+                    print(f"[DB] Failed to parse tool_calls: {e}")
             messages.append(msg)
         
         conn.close()
@@ -525,7 +539,6 @@ def get_gateway_messages_before(before_timestamp: float, limit: int = 100) -> li
             FROM messages m
             JOIN sessions s ON m.session_id = s.id
             WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant') AND m.timestamp < ?
-              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
             ORDER BY m.timestamp DESC
             LIMIT ?
             """,
@@ -543,9 +556,24 @@ def get_gateway_messages_before(before_timestamp: float, limit: int = 100) -> li
             }
             if r["tool_calls"]:
                 try:
-                    msg["toolCalls"] = json.loads(r["tool_calls"])
-                except:
-                    pass
+                    raw_tool_calls = json.loads(r["tool_calls"])
+                    tool_calls = []
+                    for tc in raw_tool_calls:
+                        tool_call = {
+                            "name": tc.get("function", {}).get("name", "unknown"),
+                            "status": "completed",
+                        }
+                        args = tc.get("function", {}).get("arguments", "")
+                        if args:
+                            try:
+                                args_obj = json.loads(args)
+                                tool_call["result"] = json.dumps(args_obj, indent=2, ensure_ascii=False)
+                            except:
+                                tool_call["result"] = args
+                        tool_calls.append(tool_call)
+                    msg["toolCalls"] = tool_calls
+                except Exception as e:
+                    print(f"[DB] Failed to parse tool_calls: {e}")
             messages.append(msg)
         
         conn.close()
@@ -572,7 +600,6 @@ def get_gateway_message_count() -> int:
             FROM messages m
             JOIN sessions s ON m.session_id = s.id
             WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant')
-              AND (m.role = 'user' OR (m.role = 'assistant' AND m.content IS NOT NULL AND m.content != ''))
             """
         ).fetchone()[0]
         conn.close()
