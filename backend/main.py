@@ -733,13 +733,27 @@ async def get_gateway_table_data(table_name: str, limit: int = 100, offset: int 
         import sqlite3
         conn = sqlite3.connect(str(gateway_db))
         
-        count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
-        total = count_cursor.fetchone()[0]
+        if table_name == 'messages':
+            count_cursor = conn.execute(
+                "SELECT COUNT(*) FROM messages WHERE role = 'user' OR (role = 'assistant' AND content IS NOT NULL AND content != '')"
+            )
+            total = count_cursor.fetchone()[0]
+            
+            cursor = conn.execute(
+                """SELECT * FROM messages 
+                   WHERE role = 'user' OR (role = 'assistant' AND content IS NOT NULL AND content != '')
+                   ORDER BY timestamp DESC LIMIT ? OFFSET ?""",
+                (limit, offset)
+            )
+        else:
+            count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+            total = count_cursor.fetchone()[0]
+            
+            cursor = conn.execute(
+                f"SELECT * FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
+                (limit, offset)
+            )
         
-        cursor = conn.execute(
-            f"SELECT * FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
-            (limit, offset)
-        )
         rows = cursor.fetchall()
         
         columns = [description[0] for description in cursor.description]
