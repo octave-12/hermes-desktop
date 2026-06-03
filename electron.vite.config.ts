@@ -15,6 +15,19 @@ export default defineConfig({
         '@': resolve('src/renderer/src')
       }
     },
-    plugins: [vue()]
+    plugins: [vue()],
+    server: {
+      hmr: false,
+      watch: {
+        // WSL cross-filesystem + CodeArts extension writes cause spurious reloads
+        ignored: [
+          '**/.codeartsdoer/**',
+          '**/.arts/**',
+          '**/backend/**',
+          '**/node_modules/**',
+          '**/.git/**'
+        ]
+      }
+    }
   }
 })

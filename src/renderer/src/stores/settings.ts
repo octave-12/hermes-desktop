@@ -17,7 +17,6 @@ export interface ModelConfig {
   model: string
   provider: string
   temperature: number
-  maxTokens: number
 }
 
 export interface DeepSeekSettings {
@@ -29,8 +28,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const config = ref<ModelConfig>({
     model: '',
     provider: '',
-    temperature: 0.7,
-    maxTokens: 2048
+    temperature: 0.7
   })
 
   const availableModels = ref<ModelProfile[]>([])

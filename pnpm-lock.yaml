@@ -20,6 +20,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      rollup:
+        specifier: ^4.60.4
+        version: 4.60.4
       vue:
         specifier: ^3.5.13
         version: 3.5.34(typescript@5.9.3)

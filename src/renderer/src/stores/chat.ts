@@ -8,6 +8,7 @@ export interface Message {
   timestamp: number
   toolCalls?: ToolCall[]
   source?: 'desktop' | 'wechat'
+  audioUrl?: string       // TTS audio URL for voice message playback
 }
 
 export interface ToolCall {
@@ -33,6 +34,7 @@ export interface Session {
   needsReload?: boolean
   totalCount?: number
   hasMore?: boolean
+  isLocalOnly?: boolean
 }
 
 export interface WeChatConnection {
@@ -50,9 +52,17 @@ export const useChatStore = defineStore('chat', () => {
   const isReconnecting = ref(false)
   const isLoading = ref(false)
   const ws = ref<WebSocket | null>(null)
-  
+
   // WeChat connections
   const wechatConnections = ref<WeChatConnection[]>([])
+
+  // Context summary notification (shows when LLM summarizes pruned messages)
+  const sessionSummary = ref<{
+    sessionId: string
+    summaryText: string
+    droppedCount: number
+    totalMessages: number
+  } | null>(null)
 
   // Pending messages queue (per session)
   const pendingMessages = ref<Map<string, string[]>>(new Map())
@@ -79,7 +89,8 @@ export const useChatStore = defineStore('chat', () => {
       id,
       title: '新对话',
       messages: [],
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      isLocalOnly: true
     }
     sessions.value.unshift(session)
     currentSessionId.value = id
@@ -112,8 +123,9 @@ export const useChatStore = defineStore('chat', () => {
     
     currentSessionId.value = id
     const session = sessions.value.find((s) => s.id === id)
+    // Always reload wechat-session (gateway data may have changed)
     // Load messages if session has none or needs reload
-    if (session && (session.messages.length === 0 || session.needsReload)) {
+    if (session && (session.messages.length === 0 || session.needsReload || id === 'wechat-session')) {
       session.needsReload = false
       wsSend({ type: 'load_messages', session_id: id, limit: 100 })
     }
@@ -276,20 +288,18 @@ export const useChatStore = defineStore('chat', () => {
     switch (data.type) {
       // ── Persistence messages ──
       case 'sessions_loaded': {
-        // Merge backend sessions (don't overwrite locally created ones)
         const backendSessions: Session[] = data.sessions.map((s: any) => ({
           id: s.id,
           title: s.title,
           messages: [],
           createdAt: s.createdAt
         }))
-        // Keep any local sessions not yet in backend list
-        const localOnlyIds = new Set(
-          sessions.value
-            .filter((ls) => !backendSessions.some((bs) => bs.id === ls.id))
-            .map((ls) => ls.id)
+        // Only keep local sessions explicitly marked as local (user just created them)
+        // This prevents stale "ghost" sessions from persisting forever
+        const localOnly = sessions.value.filter(
+          (ls) => !backendSessions.some((bs) => bs.id === ls.id)
+            && ls.isLocalOnly === true
         )
-        const localOnly = sessions.value.filter((s) => localOnlyIds.has(s.id))
         sessions.value = [...localOnly, ...backendSessions]
         
         // Auto-select first session if none selected
@@ -301,7 +311,9 @@ export const useChatStore = defineStore('chat', () => {
       case 'messages_loaded': {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (session) {
-          if (session.messages.length === 0) {
+          // For wechat-session: always replace (gateway data is authoritative)
+          // For other sessions: merge new messages with existing
+          if (session.messages.length === 0 || data.session_id === 'wechat-session') {
             session.messages = data.messages
           } else if (data.messages.length > 0) {
             const firstNewTimestamp = data.messages[0].timestamp
@@ -323,6 +335,15 @@ export const useChatStore = defineStore('chat', () => {
       case 'session_title': {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (session) session.title = data.title
+        break
+      }
+      case 'session-summary': {
+        sessionSummary.value = {
+          sessionId: data.session_id,
+          summaryText: data.summary_text,
+          droppedCount: data.dropped_count,
+          totalMessages: data.total_messages,
+        }
         break
       }
       case 'session_renamed': {
@@ -347,12 +368,15 @@ export const useChatStore = defineStore('chat', () => {
             timestamp: Date.now()
           })
         }
+        // Dispatch token event for streaming TTS
+        window.dispatchEvent(new CustomEvent('chat-token', { detail: { token: cleanedContent } }))
         break
       }
       case 'message_done': {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (session) {
           session.isLoading = false
+          session.queueItems = []  // Clear queue display when conversation round completes
           // Update lastAiMessage only when message is complete
           const lastMsg = session.messages[session.messages.length - 1]
           if (lastMsg && lastMsg.role === 'assistant') {
@@ -390,7 +414,8 @@ export const useChatStore = defineStore('chat', () => {
         const session = sessions.value.find((s) => s.id === data.session_id)
         if (session) {
           session.queueItems = data.queue_items || []
-          session.isLoading = data.queue_length > 0
+          // Don't reset isLoading here — let message_done handle it
+          // isLoading should stay true while AI is generating
         }
         break
       }
@@ -458,14 +483,31 @@ export const useChatStore = defineStore('chat', () => {
       }
       
       case 'new_message': {
-        // Message from WeChat or other sources
-        const session = sessions.value.find((s) => s.id === data.session_id)
+        // Message from WeChat or other sources (supports both nested and flat format)
+        // Always route gateway/wechat messages to the consolidated wechat-session
+        const sessionId = data.session_id === 'wechat-session' ? 'wechat-session' : data.session_id
+        let session = sessions.value.find((s) => s.id === sessionId)
+
+        // Never auto-create sessions from incoming messages — if session doesn't exist,
+        // route to the wechat-session instead to prevent duplicate sidebar entries
+        if (!session && sessionId !== 'wechat-session') {
+          session = sessions.value.find((s) => s.id === 'wechat-session')
+        }
+
         if (session) {
-          const exists = session.messages.some(m => m.id === data.message.id)
+          // Support both nested (data.message) and flat (data.role/data.content) formats
+          const msg = data.message || {
+            id: data.message_id,
+            role: data.role,
+            content: data.content,
+            source: data.source,
+            timestamp: data.timestamp
+          }
+          const exists = session.messages.some(m => m.id === msg.id)
           if (!exists) {
             session.messages.push({
-              ...data.message,
-              timestamp: data.message.timestamp || Date.now()
+              ...msg,
+              timestamp: msg.timestamp || Date.now()
             })
           }
         }
@@ -492,6 +534,45 @@ export const useChatStore = defineStore('chat', () => {
         break
       }
       
+      case 'gateway_new_messages': {
+        // Gateway sync detected new messages in Hermes state.db
+        // If we're currently on wechat-session, reload messages immediately
+        if (currentSessionId.value === 'wechat-session') {
+          wsSend({ type: 'load_messages', session_id: 'wechat-session', limit: 100 })
+        } else {
+          // Mark wechat-session for reload when user switches back
+          const wcSession = sessions.value.find(s => s.id === 'wechat-session')
+          if (wcSession) wcSession.needsReload = true
+        }
+        break
+      }
+      case 'gateway_sessions_updated': {
+        // New gateway sessions detected — trigger session list refresh
+        wsSend({ type: 'load_sessions' })
+        // Reload current session's messages to pick up new gateway content
+        if (currentSessionId.value) {
+          const active = sessions.value.find(s => s.id === currentSessionId.value)
+          if (active) {
+            wsSend({ type: 'load_messages', session_id: currentSessionId.value, limit: 100 })
+          }
+        }
+        break
+      }
+      
+      case 'gateway_active_session_changed': {
+        // Active gateway session changed (user did /new or /切换会话 in WeChat)
+        // Reload wechat-session messages to show the new active conversation
+        const wcSession = sessions.value.find(s => s.id === 'wechat-session')
+        if (wcSession) {
+          wcSession.needsReload = true
+          // If currently viewing wechat-session, reload immediately
+          if (currentSessionId.value === 'wechat-session') {
+            wsSend({ type: 'load_messages', session_id: 'wechat-session', limit: 100 })
+          }
+        }
+        break
+      }
+
       case 'session_created': {
         // Session created from WeChat
         const exists = sessions.value.some(s => s.id === data.session.id)
@@ -502,6 +583,10 @@ export const useChatStore = defineStore('chat', () => {
             messages: [],
             createdAt: data.session.createdAt
           })
+        } else {
+          // Backend confirmed creation — clear local-only flag so sessions_loaded keeps it
+          const local = sessions.value.find(s => s.id === data.session.id)
+          if (local) local.isLocalOnly = false
         }
         break
       }
@@ -625,6 +710,10 @@ export const useChatStore = defineStore('chat', () => {
     pendingMessages.value.clear()
   }
 
+  function clearSummary() {
+    sessionSummary.value = null
+  }
+
   return {
     sessions,
     currentSessionId,
@@ -633,6 +722,8 @@ export const useChatStore = defineStore('chat', () => {
     isLoading,
     pendingMessages,
     wechatConnections,
+    sessionSummary,
+    clearSummary,
     createSession,
     deleteSession,
     switchSession,

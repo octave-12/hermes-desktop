@@ -1,6 +1,9 @@
 @echo off
 chcp 65001 >nul
 
+REM Force HOME to correct Windows user profile (prevents D:\home creation)
+set "HOME=%USERPROFILE%"
+
 REM ========================================
 REM   Hermes Desktop - Silent Start
 REM ========================================

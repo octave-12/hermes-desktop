@@ -246,6 +246,12 @@ onMounted(async () => {
   if (toastRef.value) {
     setToastInstance(toastRef.value)
   }
+
+  // Listen for second-instance event from main process
+  ;(window as any).electron.ipcRenderer.on('app:already-running', () => {
+    const toast = useToast()
+    toast.info('程序已切换到现有窗口', 2000)
+  })
   
   // Set confirm instance
   if (confirmRef.value) {

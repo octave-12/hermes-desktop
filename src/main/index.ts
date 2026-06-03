@@ -10,18 +10,17 @@ app.setPath('userData', customUserDataPath)
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
-  // 如果已经有实例在运行，退出新实例
-  console.log('[App] Another instance is already running. Exiting...')
+  // 如果已经有实例在运行，静默退出
   app.quit()
-  process.exit(0)
-}
+} else {
 
-// 当尝试启动第二个实例时，聚焦到已有窗口
+// 当尝试启动第二个实例时，聚焦到已有窗口并提示
 app.on('second-instance', () => {
   const mainWindow = BrowserWindow.getAllWindows()[0]
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
+    mainWindow.webContents.send('app:already-running')
   }
 })
 
@@ -160,3 +159,5 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+} // end else (gotTheLock)

@@ -22,10 +22,26 @@
         class="message-row"
         :class="msg.role"
       >
+            <!-- Summary notification pill (before first message) -->
+            <template v-if="msg === currentSession.messages[0] && sessionSummary">
+              <div class="summary-pill" @click="dismissSummary">
+                <span class="summary-icon">📋</span>
+                <span class="summary-text">
+                  已自动总结 {{ sessionSummary.droppedCount }} 条历史消息
+                  （共 {{ sessionSummary.totalMessages }} 条）
+                </span>
+                <span class="summary-close">×</span>
+              </div>
+            </template>
             <!-- AI message: avatar left, bubble left -->
             <template v-if="msg.role === 'assistant'">
               <div class="bubble ai-bubble" :class="msg.source">
                 <div class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
+                <VoiceMessagePlayer
+                  v-if="msg.audioUrl"
+                  :audio-url="msg.audioUrl"
+                  :auto-play="true"
+                />
                 <div v-if="msg.toolCalls?.length" class="tool-calls">
                   <div v-for="(tc, idx) in msg.toolCalls" :key="idx" class="tool-call">
                     <div class="tool-header">
@@ -105,6 +121,17 @@
           @keydown.enter.exact.prevent="handleSend"
           rows="1"
         ></textarea>
+        <button
+          class="voice-toggle-btn"
+          :class="{ active: voiceMode.settings.value.enabled }"
+          @click="toggleVoiceMode"
+          title="语音模式"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+        </button>
         <button 
           class="send-btn" 
           :class="{ 'is-loading': currentSession?.isLoading }"
@@ -127,8 +154,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import { useVoiceMode } from '@/composables/useVoiceMode'
+import VoiceMessagePlayer from '@/components/VoiceMessagePlayer.vue'
 
 declare global {
   interface Window {
@@ -146,10 +175,66 @@ const isResizing = ref(false)
 const isLoadingMore = ref(false)
 
 const currentSession = computed(() => chatStore.getCurrentSession())
+const sessionSummary = computed(() => chatStore.sessionSummary)
+const dismissSummary = () => chatStore.clearSummary()
+
+// ── Voice Mode Integration ──────────────────────────────────
+const voiceMode = useVoiceMode()
+const pendingTtsMessage = ref<{ audioUrl: string } | null>(null)
+
+const toggleVoiceMode = () => {
+  const next = !voiceMode.settings.value.enabled
+  voiceMode.settings.value.enabled = next
+  const saved = JSON.parse(localStorage.getItem('hermes_voice_settings') || '{}')
+  saved.enabled = next
+  localStorage.setItem('hermes_voice_settings', JSON.stringify(saved))
+  // Only dispatch event — useVoiceMode's listener handles start/stop (no double-call)
+  window.dispatchEvent(new CustomEvent('voice-settings-changed', { detail: { enabled: next } }))
+}
+
+// ── Streaming TTS: forward tokens to voice mode ─────────
+function handleChatToken(e: Event) {
+  const token = (e as CustomEvent).detail?.token
+  if (token && voiceMode.settings.value.enabled) {
+    console.log(`[ChatView] chat-token received, forwarding to voiceMode`)
+    voiceMode.onStreamingToken(token)
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('chat-token', handleChatToken)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('chat-token', handleChatToken)
+})
+
+// Watch for AI response completion to trigger TTS
+watch(
+  () => currentSession.value?.isLoading,
+  (isLoading) => {
+    if (!isLoading && currentSession.value) {
+      const lastMsg = currentSession.value.messages[currentSession.value.messages.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant' && voiceMode.settings.value.enabled) {
+        pendingTtsMessage.value = lastMsg
+        voiceMode.onAiResponse(lastMsg.content)
+      }
+    }
+  }
+)
+
+/** Strip voice mode markers and hidden instructions from text for display */
+function stripVoiceMarkers(content: string): string {
+  return content
+    .replace(/<!--[\s\S]*?-->/g, '')           // HTML comments (hidden instructions)
+    .replace(/\[CONTINUE\]/g, '')              // Continue marker
+    .replace(/\[DONE\]/g, '')                  // Done marker
+    .trim()
+}
 
 function renderMarkdown(content: string): string {
   if (!content) return ''
-  return content
+  return stripVoiceMarkers(content)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -246,6 +331,30 @@ onMounted(async () => {
     chatStore.connectWebSocket(url)
   } catch (e) {
     console.error('Failed to get backend URL:', e)
+  }
+
+  // Configure voice mode
+  voiceMode.configure({
+    sendMessage: (text) => {
+      if (!chatStore.currentSessionId) {
+        chatStore.createSession()
+      }
+      chatStore.sendMessage(text)
+    },
+    onStatusChange: () => {
+      // Status changes reflected via computed properties
+    },
+    onTtsComplete: (audioUrl) => {
+      if (pendingTtsMessage.value) {
+        pendingTtsMessage.value.audioUrl = audioUrl
+        pendingTtsMessage.value = null
+      }
+    },
+  })
+
+  // If voice mode was already enabled, start it
+  if (voiceMode.settings.value.enabled) {
+    voiceMode.startVoiceMode()
   }
 })
 </script>
@@ -403,6 +512,44 @@ onMounted(async () => {
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 0.8rem;
+}
+
+/* ── Summary pill ── */
+.summary-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #89b4fa18;
+  border: 1px solid #89b4fa33;
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  font-size: 0.82rem;
+  color: #89b4fa;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: fit-content;
+  max-width: 90%;
+}
+.summary-pill:hover {
+  background: #89b4fa28;
+}
+.summary-icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+.summary-text {
+  flex: 1;
+  line-height: 1.4;
+}
+.summary-close {
+  font-size: 1.1rem;
+  color: #89b4fa88;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+.summary-close:hover {
+  color: #89b4fa;
 }
 
 /* ── Tool calls ── */
@@ -606,6 +753,33 @@ onMounted(async () => {
 
 .input-wrapper textarea::placeholder {
   color: #585b70;
+}
+
+.voice-toggle-btn {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  color: #585b70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.voice-toggle-btn:hover {
+  color: #cdd6f4;
+  background: rgba(255,255,255,0.06);
+}
+
+.voice-toggle-btn.active {
+  color: #a6e3a1;
+  background: rgba(166,227,161,0.1);
+}
+
+.voice-toggle-btn.active:hover {
+  background: rgba(166,227,161,0.18);
 }
 
 .send-btn {

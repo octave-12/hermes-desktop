@@ -29,6 +29,13 @@
         >
           📱 微信连接
         </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'voice' }"
+          @click="activeTab = 'voice'"
+        >
+          🎤 语音模式
+        </button>
       </div>
 
       <div class="modal-body">
@@ -137,18 +144,7 @@
               <p class="setting-hint">控制回复的创造性（0 = 确定性强，2 = 更随机）</p>
             </div>
 
-            <div class="setting-group">
-              <label class="setting-label">Max Tokens: {{ localConfig.maxTokens }}</label>
-              <input
-                v-model.number="localConfig.maxTokens"
-                type="range"
-                min="256"
-                max="8192"
-                step="256"
-                class="setting-range"
-              />
-              <p class="setting-hint">单次回复的最大 token 数量</p>
-            </div>
+
           </div>
         </div>
         </div>
@@ -161,6 +157,103 @@
         <!-- WeChat Connection Tab -->
         <div v-if="activeTab === 'wechat'">
           <WeChatManager />
+        </div>
+        
+        <!-- Voice Settings Tab -->
+        <div v-if="activeTab === 'voice'" class="voice-settings">
+          <!-- Voice Mode Toggle -->
+          <div class="setting-group">
+            <label class="setting-label">语音模式</label>
+            <div class="toggle-row">
+              <label class="switch">
+                <input type="checkbox" v-model="voiceSettings.enabled" />
+                <span class="slider"></span>
+              </label>
+              <span class="toggle-label">{{ voiceSettings.enabled ? '开启' : '关闭' }}</span>
+            </div>
+            <p class="setting-hint">开启后可通过唤醒词进行语音对话</p>
+          </div>
+
+          <hr class="divider" />
+
+          <!-- Wake Word -->
+          <div class="setting-group">
+            <label class="setting-label">唤醒词</label>
+            <div class="wake-word-row">
+              <input
+                v-model="voiceSettings.wakeWord"
+                class="setting-input wake-word-input"
+                placeholder="例如: 小马"
+                maxlength="10"
+              />
+              <button 
+                class="btn btn-test" 
+                @click="voiceInputWakeWord"
+                :disabled="micTesting"
+              >
+                {{ micTesting ? '🎤 识别中...' : '🎤 语音录入' }}
+              </button>
+              <button 
+                class="btn btn-test" 
+                @click="testTTS"
+                :disabled="ttsTesting"
+              >
+                {{ ttsTesting ? '🔊 测试中' : '🔊 测试语音' }}
+              </button>
+            </div>
+            <p class="setting-hint">说出唤醒词来激活语音对话模式</p>
+          </div>
+
+          <hr class="divider" />
+
+          <!-- TTS Voice Selection -->
+          <div class="setting-group">
+            <label class="setting-label">语音播报音色</label>
+            <select v-model="voiceSettings.ttsVoice" class="setting-input">
+              <option value="zh-CN-XiaoxiaoNeural">晓晓（女声，中文）</option>
+              <option value="zh-CN-YunxiNeural">云希（男声，中文）</option>
+              <option value="zh-CN-YunyangNeural">云扬（男声，新闻）</option>
+              <option value="en-US-JennyNeural">Jenny（女声，英文）</option>
+              <option value="ja-JP-NanamiNeural">Nanami（女声，日文）</option>
+            </select>
+            <p class="setting-hint">AI 回复时将使用所选音色朗读</p>
+          </div>
+
+          <hr class="divider" />
+
+          <!-- Speech Speed -->
+          <div class="setting-group">
+            <label class="setting-label">朗读语速</label>
+            <div class="speed-row">
+              <span class="speed-label">0.5x</span>
+              <input
+                type="range"
+                v-model.number="voiceSettings.speed"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                class="speed-slider"
+              />
+              <span class="speed-label">2.0x</span>
+              <span class="speed-value">{{ voiceSettings.speed.toFixed(1) }}x</span>
+            </div>
+            <p class="setting-hint">调整 AI 语音播报的朗读速度</p>
+          </div>
+
+          <hr class="divider" />
+
+          <!-- Usage Guide -->
+          <div class="usage-guide">
+            <div class="guide-header">📖 使用说明</div>
+            <div class="guide-steps">
+              <div class="guide-step">① 开启「语音模式」，用「🎤 语音录入」设置唤醒词</div>
+              <div class="guide-step">② 对麦克风说唤醒词「{{ voiceSettings.wakeWord }}」，看到提示后说出问题</div>
+              <div class="guide-step">③ AI 回复后自动朗读，直接说下句话继续对话，长时间无对话自动暂停</div>
+            </div>
+            <div class="guide-note">
+              需要 Chrome/Edge · 语速可调（0.5x~2.0x） · 唤醒不灵敏？试试更长的词（如「你好小马」）
+            </div>
+          </div>
         </div>
       </div>
 
@@ -285,13 +378,12 @@ const settingsStore = useSettingsStore()
 const toast = useToast()
 const confirm = useConfirm()
 
-const activeTab = ref<'model' | 'memory' | 'wechat'>('model')
+const activeTab = ref<'model' | 'memory' | 'wechat' | 'voice'>('model')
 
 const localConfig = ref({
   model: '',
   provider: '',
   temperature: 0.7,
-  maxTokens: 2048
 })
 
 const availableModels = ref<ModelProfile[]>([])
@@ -354,7 +446,7 @@ async function loadCurrentConfig() {
         model: data.model || 'deepseek-v4-pro',
         provider: data.provider || 'deepseek',
         temperature: data.temperature || 0.7,
-        maxTokens: data.maxTokens || 2048
+
       }
       selectedModelId.value = localConfig.value.model
       await checkApiKeyStatus()
@@ -575,6 +667,121 @@ async function restartAllServices() {
     console.error('[Restart] Failed to restart:', error)
     toast.error('重启服务失败，请手动重启')
     restarting.value = false
+  }
+}
+
+// ── Voice Settings ─────────────────────────────────────────
+interface VoiceSettingsData {
+  enabled: boolean
+  wakeWord: string
+  ttsVoice: string
+  continuousMode: boolean
+  speed: number
+}
+
+function loadVoiceSettings(): VoiceSettingsData {
+  const defaults: VoiceSettingsData = { enabled: false, wakeWord: '小马', ttsVoice: 'zh-CN-XiaoxiaoNeural', continuousMode: true, speed: 1.0 }
+  try {
+    const saved = localStorage.getItem('hermes_voice_settings')
+    if (saved) {
+      return { ...defaults, ...JSON.parse(saved) }
+    }
+  } catch { /* ignore */ }
+  return defaults
+}
+
+const voiceSettings = ref<VoiceSettingsData>(loadVoiceSettings())
+const micTesting = ref(false)
+const ttsTesting = ref(false)
+
+watch(voiceSettings, (newVal) => {
+  localStorage.setItem('hermes_voice_settings', JSON.stringify(newVal))
+  // Notify other components (e.g. useVoiceMode in ChatView)
+  window.dispatchEvent(new CustomEvent('voice-settings-changed', { detail: newVal }))
+}, { deep: true })
+
+async function voiceInputWakeWord() {
+  micTesting.value = true
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    stream.getTracks().forEach(t => t.stop())
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      toast.warning('⚠️ 当前环境不支持语音识别，请使用 Chrome/Edge')
+      return
+    }
+
+    toast.info('🎤 请说出唤醒词...')
+    await new Promise<void>((resolve, reject) => {
+      const sr = new SR()
+      sr.lang = 'zh-CN'
+      sr.continuous = false
+      sr.interimResults = false
+      const timer = setTimeout(() => {
+        try { sr.stop() } catch {}
+        toast.warning('⚠️ 5秒内未检测到语音，请检查麦克风')
+        resolve()
+      }, 5000)
+
+      sr.onresult = (e: any) => {
+        clearTimeout(timer)
+        const text = e.results[0][0].transcript.trim()
+        voiceSettings.value.wakeWord = text
+        toast.success(`✅ 唤醒词已设为「${text}」`)
+        try { sr.stop() } catch {}
+        resolve()
+      }
+      sr.onerror = (e: any) => {
+        clearTimeout(timer)
+        if (e.error === 'not-allowed') {
+          toast.error('❌ 麦克风权限被拒绝')
+          reject(new Error('mic denied'))
+        } else if (e.error === 'no-speech') {
+          toast.warning('⚠️ 未检测到声音，麦克风可能未连接')
+          resolve()
+        } else {
+          toast.warning(`⚠️ 语音识别错误: ${e.error}`)
+          resolve()
+        }
+      }
+      try { sr.start() } catch (e) { reject(e) }
+    })
+  } catch (e) {
+    console.error('[VoiceSettings] Voice input failed:', e)
+    if (e instanceof DOMException && e.name === 'NotAllowedError') {
+      toast.error('❌ 请在浏览器设置中允许麦克风权限')
+    } else if (e instanceof DOMException && e.name === 'NotFoundError') {
+      toast.error('❌ 未检测到麦克风设备')
+    } else {
+      toast.warning('语音录入失败')
+    }
+  } finally {
+    micTesting.value = false
+  }
+}
+
+async function testTTS() {
+  ttsTesting.value = true
+  try {
+    const response = await fetchWithAuth('/api/tts/speak', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: `语音测试完成，唤醒词「${voiceSettings.value.wakeWord}」已设置`,
+        voice: voiceSettings.value.ttsVoice,
+      }),
+    })
+    if (!response.ok) throw new Error('TTS failed')
+    const data = await response.json()
+    if (data.success && data.audio_url) {
+      const audio = new Audio(`${window.location.protocol}//${window.location.hostname}:8765${data.audio_url}`)
+      audio.play()
+    }
+  } catch (e) {
+    console.error('[VoiceSettings] TTS test failed:', e)
+    toast.warning('语音播报测试失败，请确认后端已安装 edge-tts')
+  } finally {
+    ttsTesting.value = false
   }
 }
 
@@ -1138,5 +1345,123 @@ input:checked + .slider:before {
 }
 .btn-effort:hover:not(.active) {
   border-color: #89b4fa;
+}
+
+/* ── Voice Settings ── */
+.wake-word-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wake-word-input {
+  flex: 1;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.usage-guide {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.guide-header {
+  font-weight: 600;
+  color: #cdd6f4;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+}
+
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-step {
+  color: #a6adc8;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.guide-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #1e1e2e;
+  border-left: 3px solid #89b4fa;
+  border-radius: 0 6px 6px 0;
+  color: #a6adc8;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.guide-note strong {
+  color: #cdd6f4;
+}
+
+.speed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.speed-label {
+  font-size: 12px;
+  color: #6c7086;
+  min-width: 28px;
+  text-align: center;
+}
+.speed-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  outline: none;
+  margin: 0;
+}
+.speed-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #313244;
+  border-radius: 3px;
+  border: none;
+}
+.speed-slider::-moz-range-track {
+  height: 6px;
+  background: #313244;
+  border-radius: 3px;
+  border: none;
+}
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #89b4fa;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(137, 180, 250, 0.4);
+  margin-top: -6px;
+}
+.speed-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #89b4fa;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 6px rgba(137, 180, 250, 0.4);
+}
+.speed-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #89b4fa;
+  min-width: 36px;
+  text-align: right;
 }
 </style>

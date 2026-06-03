@@ -116,6 +116,21 @@ def init_db():
             conn.commit()
         except sqlite3.OperationalError:
             pass  # index already exists
+
+        # Session summaries: LLM-generated context for pruned messages
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS session_summaries (
+                session_id TEXT NOT NULL,
+                summary_text TEXT NOT NULL,
+                msg_count INTEGER NOT NULL,
+                up_to_timestamp INTEGER NOT NULL,
+                token_estimate INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (session_id, up_to_timestamp)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_session_summaries_session ON session_summaries(session_id)")
+        conn.commit()
         
         # Check and run incremental vacuum on startup if needed
         freelist = conn.execute("PRAGMA freelist_count").fetchone()[0]
@@ -458,6 +473,22 @@ def get_or_create_wechat_session() -> str:
         return WECHAT_SESSION_ID
 
 
+# ── Active Gateway Session Tracking ─────────────────────────
+_active_gateway_session_id: str | None = None
+
+
+def get_active_gateway_session() -> str | None:
+    """Return the currently active gateway session ID."""
+    global _active_gateway_session_id
+    return _active_gateway_session_id
+
+
+def set_active_gateway_session(session_id: str):
+    """Set the active gateway session ID."""
+    global _active_gateway_session_id
+    _active_gateway_session_id = session_id
+
+
 def get_gateway_messages(limit: int = 100, offset: int = 0) -> list[dict]:
     """Get Weixin messages directly from Gateway's state.db."""
     from pathlib import Path
@@ -479,7 +510,7 @@ def get_gateway_messages(limit: int = 100, offset: int = 0) -> list[dict]:
             ORDER BY m.timestamp DESC
             LIMIT ? OFFSET ?
             """,
-            (limit, offset)
+            [limit, offset]
         ).fetchall()
         
         messages = []
@@ -542,7 +573,7 @@ def get_gateway_messages_before(before_timestamp: float, limit: int = 100) -> li
             ORDER BY m.timestamp DESC
             LIMIT ?
             """,
-            (before_timestamp, limit)
+            [before_timestamp, limit]
         ).fetchall()
         
         messages = []
@@ -600,10 +631,54 @@ def get_gateway_message_count() -> int:
             FROM messages m
             JOIN sessions s ON m.session_id = s.id
             WHERE s.source = 'weixin' AND m.role IN ('user', 'assistant')
-            """
+            """,
+            ()
         ).fetchone()[0]
         conn.close()
         return count
     except Exception as e:
         print(f"[DB] Error counting gateway messages: {e}")
         return 0
+
+
+# ── Session summary operations ────────────────────────────────
+
+def get_latest_summary(session_id: str) -> Optional[dict]:
+    """Get the most recent summary for a session."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT summary_text, msg_count, up_to_timestamp, token_estimate
+               FROM session_summaries
+               WHERE session_id = ?
+               ORDER BY up_to_timestamp DESC LIMIT 1""",
+            (session_id,)
+        ).fetchone()
+    if row:
+        return {
+            "summary_text": row[0],
+            "msg_count": row[1],
+            "up_to_timestamp": row[2],
+            "token_estimate": row[3],
+        }
+    return None
+
+
+def save_summary(session_id: str, summary_text: str, msg_count: int,
+                 up_to_timestamp: int, token_estimate: int):
+    """Persist a summary for a session."""
+    now = int(time.time() * 1000)
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO session_summaries
+               (session_id, summary_text, msg_count, up_to_timestamp, token_estimate, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (session_id, summary_text, msg_count, up_to_timestamp, token_estimate, now)
+        )
+        conn.commit()
+
+
+def delete_summaries_for_session(session_id: str):
+    """Remove all summaries for a session (e.g. on delete)."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM session_summaries WHERE session_id = ?", (session_id,))
+        conn.commit()

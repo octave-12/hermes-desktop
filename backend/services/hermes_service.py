@@ -12,6 +12,10 @@ from config import HERMES_VENV_DIR, HERMES_AGENT_DIR
 from services import database as db
 from services.model_config import model_config_manager
 from services.env_manager import env_manager
+from services.context_manager import (
+    build_smart_history, build_context_stats,
+    build_summary_prompt, extract_summary_from_response, inject_summary,
+)
 
 try:
     # Add Hermes Agent site-packages to path
@@ -160,6 +164,83 @@ class HermesService:
                 if session_id in self._active_tasks:
                     del self._active_tasks[session_id]
 
+    async def _build_history(self, session_id: str, agent=None) -> tuple[list[dict], dict]:
+        """
+        Build smart conversation history for API mode.
+        Returns (history, stats_dict).
+        If messages are pruned, generates an LLM summary of dropped messages.
+        """
+        messages = db.get_session_messages(session_id)
+        # Exclude last message (the current user message just persisted)
+        if messages and len(messages) > 1:
+            messages = messages[:-1]
+
+        history, dropped = build_smart_history(messages)
+        stats = build_context_stats(messages, len(history))
+
+        if not dropped:
+            # No pruning needed
+            return history, stats
+
+        # Pruning happened — check if we have a cached summary
+        summary_info = db.get_latest_summary(session_id)
+        summary_text = None
+        count_dropped = len([m for m in dropped if m.get("role") in ("user", "assistant")])
+
+        if summary_info and summary_info["msg_count"] >= count_dropped - 5:
+            # Cached summary covers most of the dropped messages — reuse it
+            summary_text = summary_info["summary_text"]
+            print(f"[ContextManager] Session {session_id[:8]}: "
+                  f"using cached summary ({summary_info['msg_count']} msgs)")
+        elif agent and count_dropped >= 10:
+            # Need to generate a fresh summary via LLM
+            print(f"[ContextManager] Session {session_id[:8]}: "
+                  f"generating summary for {count_dropped} dropped messages...")
+            summary_text = await self._generate_summary(agent, dropped)
+            if summary_text:
+                # Cache to DB
+                dropped_ts = max(m.get("timestamp", 0) for m in dropped)
+                db.save_summary(
+                    session_id, summary_text, count_dropped,
+                    up_to_timestamp=dropped_ts,
+                    token_estimate=sum(
+                        len(m.get("content", "")) // 4 for m in dropped
+                    ),
+                )
+                print(f"[ContextManager] Session {session_id[:8]}: "
+                      f"summary generated ({len(summary_text)} chars)")
+
+        if summary_text:
+            history = inject_summary(history, summary_text)
+            stats["has_summary"] = True
+            stats["summary_text"] = summary_text
+            stats["dropped_messages"] = count_dropped
+
+        print(f"[ContextManager] Session {session_id[:8]}: "
+              f"{stats['total_messages']} msgs → {len(history)} in context"
+              f"{' (with summary)' if stats.get('has_summary') else ''}")
+
+        return history, stats
+
+    async def _generate_summary(self, agent, dropped_messages: list[dict]) -> Optional[str]:
+        """Use LLM to summarize dropped messages."""
+        import asyncio, uuid
+        try:
+            prompt = build_summary_prompt(dropped_messages)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: agent.run_conversation(
+                    user_message=prompt,
+                    conversation_history=None,
+                    stream_callback=None,
+                )
+            )
+            return extract_summary_from_response(result)
+        except Exception as e:
+            print(f"[ContextManager] Summary generation failed: {e}")
+            return None
+
     async def _chat_via_api(
         self, session_id: str, user_message: str, model_id: str, api_key: str, api_base_url: str
     ) -> AsyncGenerator[dict, None]:
@@ -169,17 +250,18 @@ class HermesService:
             yield {"type": "error", "message": "Failed to initialize Hermes Agent"}
             return
 
-        # Get conversation history
-        messages = db.get_session_messages(session_id)
-        history = []
-        # Handle empty messages array safely
-        if messages and len(messages) > 1:
-            for msg in messages[:-1]:  # Exclude current user message
-                if msg["role"] in ("user", "assistant"):
-                    history.append({
-                        "role": msg["role"],
-                        "content": msg["content"]
-                    })
+        # Get conversation history — smart pruning + summary for long sessions
+        history, context_stats = await self._build_history(session_id, agent=agent)
+
+        # Notify frontend about summary if one was generated
+        if context_stats.get("has_summary"):
+            yield {
+                "type": "session-summary",
+                "session_id": session_id,
+                "summary_text": context_stats["summary_text"],
+                "dropped_count": context_stats["dropped_messages"],
+                "total_messages": context_stats["total_messages"],
+            }
 
         # Use asyncio.Queue for real streaming
         queue = asyncio.Queue()
@@ -268,7 +350,6 @@ class HermesService:
         hermes_sid = db.get_hermes_session_id(session_id)
         
         temperature = db.get_config("temperature", "0.7")
-        max_tokens = db.get_config("maxTokens", "2048")
 
         if hermes_sid:
             cmd = [self._hermes_bin, "--resume", hermes_sid, "chat", "-q", user_message]
@@ -282,7 +363,6 @@ class HermesService:
             env["OPENAI_API_BASE"] = api_base_url
         env["HERMES_MODEL"] = model_id
         env["HERMES_TEMPERATURE"] = temperature
-        env["HERMES_MAX_TOKENS"] = max_tokens
 
         try:
             process = await asyncio.create_subprocess_exec(

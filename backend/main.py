@@ -17,6 +17,8 @@ from services.env_manager import env_manager
 from services.memory_manager import memory_manager
 from services.auth import init_auth_token, get_auth_token, auth_middleware
 from services.wechat_gateway import router as wechat_router
+from services.tts_service import text_to_speech, get_available_voices, TTS_CACHE_DIR
+from services.gateway_sync import GatewaySync
 
 
 @asynccontextmanager
@@ -29,7 +31,13 @@ async def lifespan(app: FastAPI):
     db.get_or_create_wechat_session()
     print("[WeChat] 微信会话已就绪 (直接读取 Gateway 数据库)")
     
+    # Start gateway sync (polls Gateway state.db for new messages/sessions)
+    gateway_sync = GatewaySync(broadcast_to_all, db)
+    await gateway_sync.start()
+    
     yield
+    
+    await gateway_sync.stop()
 
 
 app = FastAPI(title="Hermes Desktop Backend", lifespan=lifespan)
@@ -234,14 +242,13 @@ async def get_config():
         "model": db.get_config("model", hermes_default),
         "provider": db.get_config("provider", hermes_provider),
         "temperature": float(db.get_config("temperature", "0.7")),
-        "maxTokens": int(db.get_config("maxTokens", "2048")),
     }
 
 
 @app.post("/api/config")
 async def update_config(request: dict):
     """Update model configuration."""
-    for key in ["model", "provider", "temperature", "maxTokens"]:
+    for key in ["model", "provider", "temperature"]:
         if key in request:
             db.set_config(key, str(request[key]))
     return {"status": "ok"}
@@ -623,7 +630,8 @@ async def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
         'sessions': {'pk': 'id', 'order': 'created_at DESC'},
         'messages': {'pk': 'id', 'order': 'timestamp DESC'}, 
         'config': {'pk': 'key', 'order': 'key ASC'},
-        'wechat_connections': {'pk': 'user_id', 'order': 'connected_at DESC'}
+        'wechat_connections': {'pk': 'user_id', 'order': 'connected_at DESC'},
+        'session_summaries': {'pk': 'session_id', 'order': 'up_to_timestamp DESC'}
     }
     
     if table_name not in allowed_tables:
@@ -804,7 +812,6 @@ async def websocket_endpoint(websocket: WebSocket):
     
     # Active chat tasks and message queues per session
     active_chats = {}
-    session_queues = {}
     waiting_sessions = []
     MAX_CONCURRENT_SESSIONS = 10
 
@@ -828,151 +835,29 @@ async def websocket_endpoint(websocket: WebSocket):
         
         return True
 
-    async def process_session_queue(session_id: str):
-        """Process messages in session queue sequentially."""
-        if session_id not in session_queues:
-            return
-        
-        queue = session_queues[session_id]
-        lock = await get_session_lock(session_id)
-        
-        while queue:
-            # Get next message from queue
-            content, user_msg_id, source = queue.pop(0)
-            
-            # Acquire lock for this session
-            async with lock:
-                try:
-                    remaining = len(queue)
-                    if remaining > 0:
-                        await broadcast_to_all({
-                            "type": "queue_updated",
-                            "session_id": session_id,
-                            "queue_length": remaining,
-                            "queue_items": [
-                                {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
-                                for c, msg_id, s in queue
-                            ]
-                        })
-                    
-                    async for chunk in hermes_service.chat(session_id, content, user_msg_id):
-                        chunk["session_id"] = session_id
-                        chunk["source"] = source
-                        await broadcast_to_all(chunk)
-                    
-                    await broadcast_to_all({
-                        "type": "message_done",
-                        "session_id": session_id,
-                        "message_id": user_msg_id
-                    })
-                    
-                except Exception as e:
-                    import traceback
-                    traceback.print_exc()
-                    await broadcast_to_all({
-                        "type": "error",
-                        "session_id": session_id,
-                        "message": str(e)
-                    })
-        
-        # Remove from active chats when queue is empty
-        if session_id in active_chats:
-            del active_chats[session_id]
-        
-        # Notify queue is empty
-        await broadcast_to_all({
-            "type": "queue_updated",
-            "session_id": session_id,
-            "queue_length": 0,
-            "queue_items": []
-        })
-        
-        # Start next waiting session if any
-        if waiting_sessions:
-            next_session_id = waiting_sessions.pop(0)
-            if next_session_id in session_queues and session_queues[next_session_id]:
-                task = asyncio.create_task(process_session_queue(next_session_id))
-                active_chats[next_session_id] = task
-
     async def remove_from_queue(session_id: str, user_msg_id: str):
-        """Remove a message from session queue."""
-        if session_id not in session_queues:
+        """Remove a message from the global unified session queue."""
+        if session_id not in unified_session_queues:
             return
-        
+
         # Find and remove the message
-        for i, (content, msg_id, source) in enumerate(session_queues[session_id]):
+        for i, (content, msg_id, source) in enumerate(unified_session_queues[session_id]):
             if msg_id == user_msg_id:
-                session_queues[session_id].pop(i)
+                unified_session_queues[session_id].pop(i)
                 break
-        
+
         # Notify client about updated queue
-        queue_length = len(session_queues[session_id])
+        queue_length = len(unified_session_queues[session_id])
         await broadcast_to_all({
             "type": "queue_updated",
             "session_id": session_id,
             "queue_length": queue_length,
             "queue_items": [
                 {"user_msg_id": msg_id, "content_preview": content[:50], "source": s}
-                for content, msg_id, s in session_queues[session_id]
+                for content, msg_id, s in unified_session_queues[session_id]
             ]
         })
 
-    async def enqueue_message(session_id: str, content: str, user_msg_id: str, source: str = "desktop"):
-        """Add message to session queue and start processing if not already active."""
-        try:
-            # Get session lock to prevent concurrent access
-            lock = await get_session_lock(session_id)
-            
-            # Initialize queue if needed
-            if session_id not in session_queues:
-                session_queues[session_id] = []
-            
-            # Add message to queue with source info
-            session_queues[session_id].append((content, user_msg_id, source))
-            queue_length = len(session_queues[session_id])
-            
-            # Notify all clients about queue update
-            if queue_length > 1:
-                await broadcast_to_all({
-                    "type": "queue_updated",
-                    "session_id": session_id,
-                    "queue_length": queue_length,
-                    "queue_items": [
-                        {"user_msg_id": msg_id, "content_preview": c[:50], "source": s}
-                        for c, msg_id, s in session_queues[session_id]
-                    ]
-                })
-            
-            # Check if session is already active
-            if session_id in active_chats:
-                return  # Already processing, message will be handled in queue
-            
-            # Check concurrent limit
-            if len(active_chats) >= MAX_CONCURRENT_SESSIONS:
-                # Add to waiting queue
-                if session_id not in waiting_sessions:
-                    waiting_sessions.append(session_id)
-                    await websocket.send_text(json.dumps({
-                        "type": "session_waiting",
-                        "session_id": session_id,
-                        "reason": f"并发会话数已达上限 ({MAX_CONCURRENT_SESSIONS})，等待中..."
-                    }))
-                return
-            
-            # Start processing
-            task = asyncio.create_task(process_session_queue(session_id))
-            active_chats[session_id] = task
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            try:
-                await websocket.send_text(json.dumps({
-                    "type": "error",
-                    "session_id": session_id,
-                    "message": f"Failed to enqueue message: {str(e)}"
-                }))
-            except:
-                pass
 
     try:
         while True:
@@ -1108,6 +993,51 @@ async def websocket_endpoint(websocket: WebSocket):
         # Cancel all active chats
         for task in active_chats.values():
             task.cancel()
+
+
+# ── TTS (Text-to-Speech) API ──────────────────────────────────
+
+@app.get("/api/tts/voices")
+async def list_tts_voices():
+    """Get available TTS voices."""
+    voices = await get_available_voices()
+    return {"voices": voices}
+
+
+@app.post("/api/tts/speak")
+async def speak_tts(request: dict):
+    """Convert text to speech and return audio file URL."""
+    text = request.get("text", "")
+    voice = request.get("voice", "zh-CN-XiaoxiaoNeural")
+
+    if not text.strip():
+        return {"error": "Text is required"}
+
+    audio_path = await text_to_speech(text, voice)
+    if not audio_path:
+        return {"error": "TTS failed"}
+
+    # Generate a URL that the frontend can fetch
+    import os
+    filename = os.path.basename(audio_path)
+    return {
+        "success": True,
+        "audio_url": f"/api/tts/audio/{filename}",
+        "text": text,
+    }
+
+
+@app.get("/api/tts/audio/{filename}")
+async def get_tts_audio(filename: str):
+    """Serve TTS audio file."""
+    from fastapi.responses import FileResponse
+
+    audio_path = TTS_CACHE_DIR / filename
+    if not audio_path.exists():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    return FileResponse(str(audio_path), media_type="audio/mpeg")
 
 
 if __name__ == "__main__":
