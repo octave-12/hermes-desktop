@@ -189,7 +189,7 @@ class ModelConfigManager:
             return False
     
     def set_default_model(self, model_id: str) -> bool:
-        """Set default model for Hermes Agent"""
+        """Set default model for Hermes Agent — also syncs provider and base_url"""
         try:
             config = self.read_hermes_config()
             
@@ -197,6 +197,14 @@ class ModelConfigManager:
                 config['model'] = {}
             
             config['model']['default'] = model_id
+            
+            # Sync provider and base_url from models block
+            models = config.get('models', {})
+            if model_id in models:
+                model_info = models[model_id]
+                config['model']['provider'] = model_info.get('provider', '')
+                config['model']['base_url'] = model_info.get('api_base_url', '')
+                print(f"[ModelConfig] Synced provider={model_info.get('provider')} base_url={model_info.get('api_base_url')}")
             
             with open(self.hermes_config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config, f, default_flow_style=False, allow_unicode=True)

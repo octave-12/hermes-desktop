@@ -651,6 +651,41 @@ async def api_get_gateway_status():
     }
 
 
+@router.post("/gateway/restart")
+async def restart_gateway():
+    """Restart Hermes Gateway via VBScript (hidden window)."""
+    import subprocess, tempfile, os
+    try:
+        # 写临时 .vbs 文件到 Windows 临时目录
+        win_temp = subprocess.check_output(
+            ["cmd.exe", "/c", "echo", "%TEMP%"], text=True
+        ).strip()
+        # 转换为 WSL 路径
+        wsl_temp = subprocess.check_output(
+            ["wslpath", win_temp], text=True
+        ).strip()
+
+        vbs_path = os.path.join(wsl_temp, "hermes-gateway-restart.vbs")
+        with open(vbs_path, "w") as f:
+            f.write('Set WshShell = CreateObject("WScript.Shell")\n')
+            f.write(
+                'WshShell.Run "cmd /c wsl -e bash -c '
+                '""~/.hermes/hermes-agent/venv/bin/hermes gateway run --replace --accept-hooks""", '
+                '0, False\n'
+            )
+
+        # 后台执行 VBScript
+        subprocess.Popen(
+            ["cmd.exe", "/c", "cscript", "//nologo",
+             vbs_path.replace(wsl_temp, win_temp)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return {"success": True, "message": "Gateway 重启已触发"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
 @router.post("/gateway/sync")
 async def sync_gateway_messages():
     """Sync messages from Gateway to Desktop wechat session."""

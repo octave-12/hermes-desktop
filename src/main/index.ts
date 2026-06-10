@@ -79,34 +79,23 @@ app.whenReady().then(() => {
     console.log('[Restart] Starting full restart...')
     
     try {
-      // Step 1: Kill ALL existing processes
-      console.log('[Restart] Killing all processes...')
+      // Step 1: Kill only Hermes backend (not Gateway/Ollama/龙神)
+      console.log('[Restart] Killing Hermes backend only...')
       await new Promise<void>((resolve) => {
-        exec('taskkill /F /IM cmd.exe 2>&1 && taskkill /F /IM node.exe 2>&1 && taskkill /F /IM electron.exe 2>&1', (error) => {
+        exec('wsl pkill -9 -f "python.*hermes-desktop.*main.py"', (error) => {
           if (error) {
-            console.log('[Restart] Some processes not found, continuing...')
-          }
-          console.log('[Restart] All processes killed')
-          resolve()
-        })
-      })
-      
-      // Step 2: Kill Python backend in WSL
-      await new Promise<void>((resolve) => {
-        exec('wsl pkill -9 -f "python main.py"', (error) => {
-          if (error) {
-            console.log('[Restart] Backend not running, continuing...')
+            console.log('[Restart] Backend not running or already stopped')
           }
           console.log('[Restart] Backend killed')
           resolve()
         })
       })
       
-      // Step 3: Wait for cleanup
-      console.log('[Restart] Waiting 3 seconds for cleanup...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // Step 2: Wait for cleanup
+      console.log('[Restart] Waiting 2 seconds for cleanup...')
+      await new Promise(resolve => setTimeout(resolve, 2000))
       
-      // Step 4: Start start.bat to relaunch everything
+      // Step 3: Launch start.bat (only restarts backend + frontend, keeps Gateway/龙神/Ollama)
       console.log('[Restart] Launching start.bat...')
       const startBatPath = 'D:\\soso\\projects\\hermes-desktop\\start.bat'
       exec(`cmd /c start "" "${startBatPath}"`, (error) => {
@@ -137,15 +126,15 @@ app.whenReady().then(() => {
 
 // Clean up all processes when app quits
 app.on('will-quit', (event) => {
-  console.log('[App] Closing all services...')
+  console.log('[App] Closing Hermes services (keeping Gateway/龙神/Ollama)...')
   
   const { execSync } = require('child_process')
   
   try {
-    // Kill ALL WSL backend processes synchronously (ensure cleanup)
-    console.log('[App] Killing ALL backend processes...')
-    execSync('wsl pkill -9 -f "python main.py"', { timeout: 3000 })
-    console.log('[App] All backend processes stopped')
+    // Kill only Hermes backend (not Gateway/龙神/Ollama)
+    console.log('[App] Killing Hermes backend...')
+    execSync('wsl pkill -9 -f "python.*hermes-desktop.*main.py"', { timeout: 3000 })
+    console.log('[App] Hermes backend stopped')
   } catch (error: any) {
     console.error('[App] Failed to kill backend:', error.message)
   }

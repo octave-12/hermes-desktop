@@ -32,7 +32,7 @@
         <div class="memory-card-footer">
           <button 
             class="btn btn-view" 
-            @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : memory.id === 'gatewaydb' ? viewGatewayDatabase() : viewMemory(memory)"
+            @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : memory.id === 'gatewaydb' ? viewGatewayDatabase() : memory.id === 'dragonballdb' ? viewDragonballDatabase('main') : memory.id === 'dragonball_checkpoint' ? viewDragonballDatabase('checkpoint') : viewMemory(memory)"
             :disabled="!memory.exists"
           >
             👁️ 查看
@@ -40,7 +40,7 @@
           <button 
             class="btn btn-edit" 
             @click="editMemory(memory)"
-            :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb' || memory.id === 'gatewaydb'"
+            :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb' || memory.id === 'gatewaydb' || memory.id === 'dragonballdb' || memory.id === 'dragonball_checkpoint'"
           >
             ✏️ 编辑
           </button>
@@ -378,6 +378,104 @@
         </div>
       </div>
     </div>
+
+    <!-- Dragonball Database Modal -->
+    <div v-if="showDragonballDbModal" class="modal-overlay" @click.self="closeDragonballDbModal">
+      <div class="modal-content main-db-modal">
+        <div class="modal-header">
+          <h2>{{ currentDragonballDb === 'checkpoint' ? '🔮 龙珠检查点库' : '🔮 龙珠知识库' }}</h2>
+          <button class="close-btn" @click="closeDragonballDbModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="db-toolbar">
+            <select v-model="selectedDragonballTable" @change="loadDragonballTableData(0)" class="table-select">
+              <option value="">选择表</option>
+              <option v-for="table in dragonballDbTables" :key="table.name" :value="table.name">
+                {{ table.name === 'nodes' ? '节点' : table.name === 'edges' ? '关系边' : '自适应配置' }} ({{ table.count }})
+              </option>
+            </select>
+            <span class="readonly-hint">只读模式</span>
+          </div>
+          
+          <div v-if="loadingDragonballDb" class="loading">加载中...</div>
+          <div v-else-if="dragonballTableData.rows.length > 0" class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th v-for="col in dragonballTableData.columns" :key="col">{{ col }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, index) in dragonballTableData.rows" :key="index">
+                  <td v-for="col in dragonballTableData.columns" :key="col" class="table-cell"
+                    :title="formatCellTitle(row[col])"
+                    @click="showDragonballDetail(row, col)"
+                    style="cursor: pointer;"
+                  >
+                    {{ formatCellValue(row[col]) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="table-pagination">
+              <button 
+                class="btn btn-sm" 
+                @click="loadDragonballTableData(0)"
+                :disabled="dragonballTableData.offset === 0"
+              >
+                首页
+              </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadDragonballTableData(dragonballTableData.offset - dragonballTableData.limit)"
+                :disabled="dragonballTableData.offset === 0"
+              >
+                上一页
+              </button>
+              <span class="page-info">
+                第 {{ currentDragonballTablePage }} / {{ totalDragonballTablePages }} 页
+              </span>
+              <button 
+                class="btn btn-sm" 
+                @click="loadDragonballTableData(dragonballTableData.offset + dragonballTableData.limit)"
+                :disabled="dragonballTableData.offset + dragonballTableData.rows.length >= dragonballTableData.total"
+              >
+                下一页
+              </button>
+              <button 
+                class="btn btn-sm" 
+                @click="loadDragonballTableData(dragonballTableData.total - dragonballTableData.limit)"
+                :disabled="dragonballTableData.offset + dragonballTableData.rows.length >= dragonballTableData.total"
+              >
+                末页
+              </button>
+              <span class="total-info">共 {{ dragonballTableData.total }} 条</span>
+            </div>
+          </div>
+          <div v-else-if="selectedDragonballTable" class="empty-message">表中暂无数据</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeDragonballDbModal">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dragonball Detail Modal -->
+    <div v-if="showDragonballDetailModal" class="modal-overlay" @click.self="closeDragonballDetailModal">
+      <div class="modal-content" style="max-width: 800px; max-height: 70vh;">
+        <div class="modal-header">
+          <h2>{{ dragonballDetailTitle }}</h2>
+          <button class="close-btn" @click="closeDragonballDetailModal">×</button>
+        </div>
+        <div class="modal-body">
+          <pre style="white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.6; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 8px; max-height: 50vh; overflow-y: auto; margin: 0;">{{ dragonballDetailContent }}</pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeDragonballDetailModal">关闭</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -480,6 +578,25 @@ const gatewayTableData = ref<{table: string; columns: string[]; rows: any[]; tot
 })
 const loadingGatewayDb = ref(false)
 
+// Dragonball database state
+const showDragonballDbModal = ref(false)
+const dragonballDbTables = ref<{name: string; count: number; columns: string[]}[]>([])
+const selectedDragonballTable = ref('')
+const dragonballTableData = ref<{table: string; columns: string[]; rows: any[]; total: number; limit: number; offset: number; primaryKey: string}>({
+  table: '',
+  columns: [],
+  rows: [],
+  total: 0,
+  limit: 100,
+  offset: 0,
+  primaryKey: 'id'
+})
+const loadingDragonballDb = ref(false)
+const showDragonballDetailModal = ref(false)
+const dragonballDetailContent = ref('')
+const dragonballDetailTitle = ref('')
+const currentDragonballDb = ref('main')  // 'main' or 'checkpoint'
+
 // 使用 fetchWithAuth 替代硬编码 URL
 
 function truncateContent(content: string, maxLength: number): string {
@@ -502,7 +619,11 @@ function getMemoryIcon(id: string): string {
     project: '📝',
     user: '👤',
     soul: '🤖',
-    database: '💾'
+    database: '💾',
+    maindb: '🗃️',
+    gatewaydb: '📱',
+    dragonballdb: '🔮',
+    dragonball_checkpoint: '📸'
   }
   return icons[id] || '📄'
 }
@@ -880,6 +1001,11 @@ function formatCellValue(value: any): string {
   return String(value)
 }
 
+function formatCellTitle(value: any): string {
+  if (value === null || value === undefined) return 'NULL'
+  return String(value)
+}
+
 const currentTablePage = computed(() => {
   if (tableData.value.limit === 0) return 1
   return Math.floor(tableData.value.offset / tableData.value.limit) + 1
@@ -983,6 +1109,108 @@ function closeGatewayDbModal() {
     offset: 0,
     primaryKey: 'id'
   }
+}
+
+// Dragonball database functions
+async function viewDragonballDatabase(db: string = 'main') {
+  currentDragonballDb.value = db
+  showDragonballDbModal.value = true
+  await loadDragonballDbTables()
+}
+
+async function loadDragonballDbTables() {
+  loadingDragonballDb.value = true
+  try {
+    const response = await fetchWithAuth(`/api/dragonball/tables?db=${currentDragonballDb.value}`)
+    const data = await response.json()
+    dragonballDbTables.value = data.tables || []
+  } catch (e: any) {
+    console.error('Failed to load dragonball tables:', e)
+  } finally {
+    loadingDragonballDb.value = false
+  }
+}
+
+async function loadDragonballTableData(offset: number = 0) {
+  if (!selectedDragonballTable.value) return
+  
+  loadingDragonballDb.value = true
+  try {
+    const response = await fetchWithAuth(`/api/dragonball/tables/${selectedDragonballTable.value}?limit=100&offset=${offset}&db=${currentDragonballDb.value}`)
+    const data = await response.json()
+    if (data.error) {
+      toast.error(data.error)
+      return
+    }
+    dragonballTableData.value = {
+      table: data.table || '',
+      columns: data.columns || [],
+      rows: data.rows || [],
+      total: data.total || 0,
+      limit: data.limit || 100,
+      offset: data.offset || 0,
+      primaryKey: data.primaryKey || 'id'
+    }
+  } catch (e: any) {
+    console.error('Failed to load dragonball table data:', e)
+    toast.error(`加载失败: ${e.message}`)
+  } finally {
+    loadingDragonballDb.value = false
+  }
+}
+
+const currentDragonballTablePage = computed(() => {
+  if (dragonballTableData.value.limit === 0) return 1
+  return Math.floor(dragonballTableData.value.offset / dragonballTableData.value.limit) + 1
+})
+
+const totalDragonballTablePages = computed(() => {
+  if (dragonballTableData.value.limit === 0) return 1
+  return Math.ceil(dragonballTableData.value.total / dragonballTableData.value.limit)
+})
+
+function closeDragonballDbModal() {
+  showDragonballDbModal.value = false
+  selectedDragonballTable.value = ''
+  dragonballTableData.value = {
+    table: '',
+    columns: [],
+    rows: [],
+    total: 0,
+    limit: 100,
+    offset: 0,
+    primaryKey: 'id'
+  }
+}
+
+function showDragonballDetail(row: any, col: string) {
+  const value = row[col]
+  if (value === null || value === undefined) {
+    dragonballDetailContent.value = 'NULL'
+  } else if (typeof value === 'string') {
+    dragonballDetailContent.value = value
+  } else if (typeof value === 'object') {
+    dragonballDetailContent.value = JSON.stringify(value, null, 2)
+  } else {
+    dragonballDetailContent.value = String(value)
+  }
+  const tableName = dragonballTableData.value.table
+  const tableLabel = tableName === 'nodes' ? '节点' : tableName === 'edges' ? '关系边' : '自适应配置'
+  const rowId = row.id || row.key || ''
+  if (tableName === 'nodes' && row.title) {
+    dragonballDetailTitle.value = row.title
+  } else if (tableName === 'edges' && row.relation_type) {
+    dragonballDetailTitle.value = row.relation_type
+  } else {
+    dragonballDetailTitle.value = `${tableLabel} · ${col} · ${rowId}`
+  }
+  showDragonballDetailModal.value = true
+}
+
+function closeDragonballDetailModal() {
+  showDragonballDetailModal.value = false
+  dragonballDetailContent.value = ''
+  dragonballDetailTitle.value = ''
 }
 
 onMounted(() => {

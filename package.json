@@ -5,6 +5,22 @@
   "main": "./out/main/index.js",
   "author": "octave",
   "license": "MIT",
+  "build": {
+    "appId": "com.hermes.desktop",
+    "productName": "Hermes Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "HermesDesktop.exe"
+    }
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -12,7 +28,8 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts,.vue --fix"
+    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts,.vue --fix",
+    "package": "electron-vite build && electron-builder --win portable"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -30,6 +47,7 @@
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^5.2.1",
     "electron": "^33.2.1",
+    "electron-builder": "^26.8.1",
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",

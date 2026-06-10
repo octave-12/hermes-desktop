@@ -597,12 +597,21 @@ export const useChatStore = defineStore('chat', () => {
   function sendMessage(content: string) {
     // Validate message content
     const trimmedContent = content.trim()
-    if (!trimmedContent) return
+    if (!trimmedContent) {
+      console.log('[SendMessage] 消息为空')
+      return
+    }
     
     const session = getCurrentSession()
-    if (!session) return
+    console.log('[SendMessage] currentSessionId:', currentSessionId.value, 'session found:', !!session, 'sessions count:', sessions.value.length)
+    if (!session) {
+      console.log('[SendMessage] ❌ 找不到当前会话，静默返回')
+      return
+    }
     
     // Check WebSocket connection
+    const wsReady = ws.value && ws.value.readyState === WebSocket.OPEN
+    console.log('[SendMessage] ws存在:', !!ws.value, 'ws状态:', ws.value?.readyState, '已连接:', wsReady)
     if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
       // Add message to queue for later sending
       const queue = pendingMessages.value.get(session.id) || []

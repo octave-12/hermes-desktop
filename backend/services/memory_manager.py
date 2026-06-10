@@ -89,6 +89,30 @@ class MemoryManager:
             "description": "Gateway 微信会话和消息（只读）"
         })
         
+        # Dragonball database (dragonball.db) - Knowledge graph
+        dragonball_db = os.path.join(os.path.expanduser("~/agent_data/dragonball/dragonball.db"))
+        types.append({
+            "id": "dragonballdb",
+            "name": "龙珠知识库",
+            "file": "dragonball.db",
+            "path": dragonball_db,
+            "exists": os.path.exists(dragonball_db),
+            "size": os.path.getsize(dragonball_db) if os.path.exists(dragonball_db) else 0,
+            "description": "龙珠知识图谱 — 节点、边、自适应配置（只读）"
+        })
+        
+        # Dragonball checkpoint database
+        checkpoint_db = os.path.join(os.path.expanduser("~/agent_data/dragonball/checkpoints/data/dragonball.db"))
+        types.append({
+            "id": "dragonball_checkpoint",
+            "name": "龙珠检查点库",
+            "file": "checkpoints/data/dragonball.db",
+            "path": checkpoint_db,
+            "exists": os.path.exists(checkpoint_db),
+            "size": os.path.getsize(checkpoint_db) if os.path.exists(checkpoint_db) else 0,
+            "description": "龙珠知识图谱检查点快照（只读）"
+        })
+        
         return types
     
     def get_memory_content(self, memory_id: str) -> Optional[str]:

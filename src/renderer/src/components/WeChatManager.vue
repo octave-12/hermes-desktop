@@ -72,6 +72,9 @@
           <br>
           💬 Gateway 自动处理微信消息
         </p>
+        <button class="btn-restart" @click="restartGateway" :disabled="gatewayRestarting">
+          {{ gatewayRestarting ? '重启中...' : '🔄 重启 Gateway' }}
+        </button>
       </div>
     </div>
   </div>
@@ -98,6 +101,28 @@ const gatewayStatus = ref({
   gateway_running: false,
   connected: false
 })
+const gatewayRestarting = ref(false)
+
+async function restartGateway() {
+  gatewayRestarting.value = true
+  try {
+    const response = await fetchWithAuth('/api/wechat/gateway/restart', { method: 'POST' })
+    const data = await response.json()
+    if (data.success) {
+      // 等几秒后刷新状态
+      setTimeout(() => {
+        checkGatewayStatus()
+        gatewayRestarting.value = false
+      }, 3000)
+    } else {
+      alert('重启失败: ' + data.message)
+      gatewayRestarting.value = false
+    }
+  } catch (error) {
+    alert('重启失败: ' + error)
+    gatewayRestarting.value = false
+  }
+}
 
 async function startQRLogin() {
   qrOperating.value = true
@@ -416,5 +441,26 @@ onMounted(async () => {
   color: #6c7086;
   line-height: 1.6;
   margin: 0;
+}
+
+.btn-restart {
+  margin-top: 10px;
+  padding: 6px 16px;
+  background: rgba(137, 180, 250, 0.15);
+  border: 1px solid rgba(137, 180, 250, 0.3);
+  border-radius: 6px;
+  color: #89b4fa;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-restart:hover:not(:disabled) {
+  background: rgba(137, 180, 250, 0.25);
+}
+
+.btn-restart:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

@@ -776,6 +776,126 @@ async def get_gateway_table_data(table_name: str, limit: int = 100, offset: int 
         return {"error": str(e)}
 
 
+# ── Dragonball Database APIs (read-only) ───────────────────────────
+
+@app.get("/api/dragonball/tables")
+async def get_dragonball_tables(db: str = "main"):
+    """Get list of tables in dragonball.db (db=main or db=checkpoint)"""
+    from pathlib import Path
+    if db == "checkpoint":
+        dragonball_db = Path.home() / "agent_data" / "dragonball" / "checkpoints" / "data" / "dragonball.db"
+    else:
+        dragonball_db = Path.home() / "agent_data" / "dragonball" / "dragonball.db"
+
+    if not dragonball_db.exists():
+        return {"error": "龙珠数据库不存在"}
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(dragonball_db))
+        conn.execute("PRAGMA busy_timeout=5000")
+        allowed_tables = ['nodes', 'edges', 'adaptive_config']
+        tables = []
+        for table_name in allowed_tables:
+            try:
+                count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+                count = count_cursor.fetchone()[0]
+                col_cursor = conn.execute(f"PRAGMA table_info([{table_name}])")
+                columns = [row[1] for row in col_cursor.fetchall()]
+                tables.append({
+                    "name": table_name,
+                    "count": count,
+                    "columns": columns
+                })
+            except Exception:
+                pass
+        conn.close()
+        return {"tables": tables}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/dragonball/tables/{table_name}")
+async def get_dragonball_table_data(table_name: str, limit: int = 100, offset: int = 0, db: str = "main"):
+    """Get data from a specific dragonball table (read-only, db=main or db=checkpoint)"""
+    from pathlib import Path
+    if db == "checkpoint":
+        dragonball_db = Path.home() / "agent_data" / "dragonball" / "checkpoints" / "data" / "dragonball.db"
+    else:
+        dragonball_db = Path.home() / "agent_data" / "dragonball" / "dragonball.db"
+
+    if not dragonball_db.exists():
+        return {"error": "龙珠数据库不存在"}
+
+    allowed_tables = {
+        'nodes': {'pk': 'id', 'order': 'id DESC',
+                  'columns': 'id, title, content, energy, depth, created_at'},
+        'edges': {'pk': 'id', 'order': 'id DESC',
+                  'columns': 'id, source, target, relation_type, weight, evidence, is_cross_branch, created_at'},
+        'adaptive_config': {'pk': 'key', 'order': 'key ASC',
+                  'columns': '*'},
+    }
+
+    if table_name not in allowed_tables:
+        return {"error": "Table not allowed"}
+
+    if limit < 1 or limit > 1000:
+        limit = 100
+    if offset < 0:
+        offset = 0
+
+    order_by = allowed_tables[table_name]['order']
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(dragonball_db))
+        conn.execute("PRAGMA busy_timeout=5000")
+
+        count_cursor = conn.execute(f"SELECT COUNT(*) FROM [{table_name}]")
+        total = count_cursor.fetchone()[0]
+
+        columns_sql = allowed_tables[table_name].get('columns', '*')
+        cursor = conn.execute(
+            f"SELECT {columns_sql} FROM [{table_name}] ORDER BY {order_by} LIMIT ? OFFSET ?",
+            (limit, offset)
+        )
+        rows = cursor.fetchall()
+
+        columns = [description[0] for description in cursor.description]
+
+        data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(columns):
+                value = row[i]
+                if isinstance(value, bytes):
+                    # Embedding blob — show dimension + first 8 float32 values
+                    import struct
+                    if len(value) >= 4 and len(value) % 4 == 0:
+                        dim = len(value) // 4
+                        preview_count = min(8, dim)
+                        preview = struct.unpack(f'{preview_count}f', value[:preview_count * 4])
+                        preview_str = ', '.join(f'{v:.4f}' for v in preview)
+                        value = f"<embedding dim={dim} [{preview_str}...]>"
+                    else:
+                        value = f"<blob {len(value)} bytes>"
+                row_dict[col] = value
+            data.append(row_dict)
+
+        conn.close()
+        return {
+            "table": table_name,
+            "columns": columns,
+            "rows": data,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "primaryKey": allowed_tables[table_name]['pk']
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.delete("/api/database/tables/{table_name}/{row_id}")
 async def delete_table_row(table_name: str, row_id: str):
     """Delete a row from a table"""
