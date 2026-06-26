@@ -10,8 +10,8 @@
     <div v-if="error" class="error-message">{{ error }}</div>
 
     <div class="memory-types">
-      <div 
-        v-for="memory in memories" 
+      <div
+        v-for="memory in memories"
         :key="memory.id"
         class="memory-card"
         :class="{ active: selectedMemory?.id === memory.id }"
@@ -30,26 +30,19 @@
           <p class="memory-description">{{ memory.description }}</p>
         </div>
         <div class="memory-card-footer">
-          <button 
-            class="btn btn-view" 
+          <button
+            class="btn btn-view"
             @click="memory.id === 'database' ? viewDatabase() : memory.id === 'maindb' ? viewMainDatabase() : memory.id === 'gatewaydb' ? viewGatewayDatabase() : memory.id === 'dragonballdb' ? viewDragonballDatabase('main') : memory.id === 'dragonball_checkpoint' ? viewDragonballDatabase('checkpoint') : viewMemory(memory)"
             :disabled="!memory.exists"
           >
             👁️ 查看
           </button>
-          <button 
-            class="btn btn-edit" 
+          <button
+            class="btn btn-edit"
             @click="editMemory(memory)"
             :disabled="!memory.exists || memory.id === 'database' || memory.id === 'maindb' || memory.id === 'gatewaydb' || memory.id === 'dragonballdb' || memory.id === 'dragonball_checkpoint'"
           >
             ✏️ 编辑
-          </button>
-          <button 
-            class="btn btn-delete-all" 
-            @click="confirmDeleteAll(memory)"
-            :disabled="!memory.exists"
-          >
-            🗑️ 清空
           </button>
         </div>
       </div>
@@ -65,15 +58,15 @@
         <div class="modal-body">
           <div v-if="loadingContent" class="loading">加载中...</div>
           <div v-else-if="memoryEntries.length > 0" class="memory-entries">
-            <div 
-              v-for="(entry, index) in memoryEntries" 
+            <div
+              v-for="(entry, index) in memoryEntries"
               :key="index"
               class="memory-entry"
             >
               <div class="entry-header">
                 <span class="entry-index">#{{ index + 1 }}</span>
-                <button 
-                  class="btn btn-delete-entry" 
+                <button
+                  class="btn btn-delete-entry"
                   @click="deleteEntry(index)"
                   title="删除此条记录"
                 >
@@ -109,7 +102,7 @@
             </select>
             <button class="btn btn-primary" @click="showAddDbEntry = true">➕ 新增记忆</button>
           </div>
-          
+
           <div v-if="loadingDb" class="loading">加载中...</div>
           <div v-else-if="dbEntries.length > 0" class="db-entries">
             <div v-for="entry in dbEntries" :key="entry.id" class="db-entry">
@@ -120,8 +113,8 @@
                   <span class="db-entry-importance">⭐{{ entry.importance }}</span>
                 </div>
                 <div class="db-entry-actions">
-                  <button 
-                    v-if="entry.content.length > 100" 
+                  <button
+                    v-if="entry.content.length > 100"
                     class="btn btn-sm btn-expand"
                     @click="toggleEntryExpand(entry.id)"
                     :title="expandedEntries.has(entry.id) ? '收起' : '展开'"
@@ -133,8 +126,8 @@
                 </div>
               </div>
               <div class="db-entry-content-wrapper">
-                <pre class="db-entry-content" :class="{ collapsed: !expandedEntries.has(entry.id) }">{{ 
-                  expandedEntries.has(entry.id) ? entry.content : truncateContent(entry.content, 100) 
+                <pre class="db-entry-content" :class="{ collapsed: !expandedEntries.has(entry.id) }">{{
+                  expandedEntries.has(entry.id) ? entry.content : truncateContent(entry.content, 100)
                 }}</pre>
               </div>
               <div v-if="entry.tags?.length" class="db-entry-tags">
@@ -194,8 +187,8 @@
           <button class="close-btn" @click="closeEditModal">×</button>
         </div>
         <div class="modal-body">
-          <textarea 
-            v-model="editContent" 
+          <textarea
+            v-model="editContent"
             class="memory-editor"
             placeholder="输入记忆内容...（多条记忆用 § 分隔）"
           ></textarea>
@@ -225,7 +218,7 @@
               </option>
             </select>
           </div>
-          
+
           <div v-if="loadingMainDb" class="loading">加载中...</div>
           <div v-else-if="tableData.rows.length > 0" class="table-container">
             <table class="data-table">
@@ -241,8 +234,8 @@
                     {{ formatCellValue(row[col]) }}
                   </td>
                   <td>
-                    <button 
-                      class="btn btn-sm btn-danger" 
+                    <button
+                      class="btn btn-sm btn-danger"
                       @click="deleteTableRow(row[tableData.primaryKey])"
                       title="删除"
                     >
@@ -253,39 +246,39 @@
               </tbody>
             </table>
             <div class="table-pagination">
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadTableData(0)"
                 :disabled="tableData.offset === 0"
               >
                 首页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadTableData(tableData.offset - tableData.limit)"
                 :disabled="tableData.offset === 0"
               >
                 上一页
               </button>
               <span class="page-info">
-                第 <input 
-                  type="number" 
-                  :value="currentTablePage" 
+                第 <input
+                  type="number"
+                  :value="currentTablePage"
                   @change="jumpToPage"
-                  min="1" 
+                  min="1"
                   :max="totalTablePages"
                   class="page-input"
                 /> / {{ totalTablePages }} 页
               </span>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadTableData(tableData.offset + tableData.limit)"
                 :disabled="tableData.offset + tableData.rows.length >= tableData.total"
               >
                 下一页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadTableData((totalTablePages - 1) * tableData.limit)"
                 :disabled="tableData.offset + tableData.rows.length >= tableData.total"
               >
@@ -319,7 +312,7 @@
             </select>
             <span class="readonly-hint">只读模式</span>
           </div>
-          
+
           <div v-if="loadingGatewayDb" class="loading">加载中...</div>
           <div v-else-if="gatewayTableData.rows.length > 0" class="table-container">
             <table class="data-table">
@@ -337,32 +330,39 @@
               </tbody>
             </table>
             <div class="table-pagination">
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadGatewayTableData(0)"
                 :disabled="gatewayTableData.offset === 0"
               >
                 首页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadGatewayTableData(gatewayTableData.offset - gatewayTableData.limit)"
                 :disabled="gatewayTableData.offset === 0"
               >
                 上一页
               </button>
               <span class="page-info">
-                第 {{ currentGatewayTablePage }} / {{ totalGatewayTablePages }} 页
+                第 <input
+                type="number"
+                :value="currentGatewayTablePage"
+                @change="jumpToGatewayTablePage"
+                min="1"
+                :max="totalGatewayTablePages"
+                class="page-input"
+              /> / {{ totalGatewayTablePages }} 页
               </span>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadGatewayTableData(gatewayTableData.offset + gatewayTableData.limit)"
                 :disabled="gatewayTableData.offset + gatewayTableData.rows.length >= gatewayTableData.total"
               >
                 下一页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadGatewayTableData(gatewayTableData.total - gatewayTableData.limit)"
                 :disabled="gatewayTableData.offset + gatewayTableData.rows.length >= gatewayTableData.total"
               >
@@ -396,7 +396,7 @@
             </select>
             <span class="readonly-hint">只读模式</span>
           </div>
-          
+
           <div v-if="loadingDragonballDb" class="loading">加载中...</div>
           <div v-else-if="dragonballTableData.rows.length > 0" class="table-container">
             <table class="data-table">
@@ -418,32 +418,39 @@
               </tbody>
             </table>
             <div class="table-pagination">
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadDragonballTableData(0)"
                 :disabled="dragonballTableData.offset === 0"
               >
                 首页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadDragonballTableData(dragonballTableData.offset - dragonballTableData.limit)"
                 :disabled="dragonballTableData.offset === 0"
               >
                 上一页
               </button>
               <span class="page-info">
-                第 {{ currentDragonballTablePage }} / {{ totalDragonballTablePages }} 页
+                第 <input
+                type="number"
+                :value="currentDragonballTablePage"
+                @change="jumpToDragonballTablePage"
+                min="1"
+                :max="totalDragonballTablePages"
+                class="page-input"
+              /> / {{ totalDragonballTablePages }} 页
               </span>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadDragonballTableData(dragonballTableData.offset + dragonballTableData.limit)"
                 :disabled="dragonballTableData.offset + dragonballTableData.rows.length >= dragonballTableData.total"
               >
                 下一页
               </button>
-              <button 
-                class="btn btn-sm" 
+              <button
+                class="btn btn-sm"
                 @click="loadDragonballTableData(dragonballTableData.total - dragonballTableData.limit)"
                 :disabled="dragonballTableData.offset + dragonballTableData.rows.length >= dragonballTableData.total"
               >
@@ -658,7 +665,7 @@ async function viewMemory(memory: Memory) {
   loadingContent.value = true
   memoryContent.value = ''
   memoryEntries.value = []
-  
+
   try {
     const response = await fetchWithAuth(`/api/memories/${memory.id}/entries`)
     const data = await response.json()
@@ -675,7 +682,7 @@ async function editMemory(memory: Memory) {
   showEditModal.value = true
   loadingContent.value = true
   editContent.value = ''
-  
+
   try {
     const response = await fetchWithAuth(`/api/memories/${memory.id}`)
     const data = await response.json()
@@ -689,13 +696,13 @@ async function editMemory(memory: Memory) {
 
 async function deleteEntry(entryIndex: number) {
   if (!selectedMemory.value) return
-  
+
   const confirmed = await confirm.danger(
     `确定要删除第 ${entryIndex + 1} 条记录吗？`,
     '删除记录'
   )
   if (!confirmed) return
-  
+
   try {
     const response = await fetchWithAuth(
       `/api/memories/${selectedMemory.value.id}/entries/${entryIndex}`,
@@ -718,7 +725,7 @@ async function confirmDeleteAll(memory: Memory) {
     '清空记忆'
   )
   if (!confirmed) return
-  
+
   try {
     const response = await fetchWithAuth(`/api/memories/${memory.id}`, {
       method: 'DELETE'
@@ -736,7 +743,7 @@ async function confirmDeleteAll(memory: Memory) {
 
 async function saveMemory() {
   if (!selectedMemory.value) return
-  
+
   saving.value = true
   try {
     const response = await fetchWithAuth(`/api/memories/${selectedMemory.value.id}`, {
@@ -836,7 +843,7 @@ async function saveDbEntry() {
       .split(',')
       .map(t => t.trim())
       .filter(t => t)
-    
+
     if (editingDbEntry.value) {
       // Update existing
       const response = await fetchWithAuth(`/api/memories/database/entries/${editingDbEntry.value.id}`, {
@@ -872,7 +879,7 @@ async function saveDbEntry() {
         return
       }
     }
-    
+
     closeDbEntryModal()
     await loadDbCategories()
     await loadDbEntries()
@@ -889,7 +896,7 @@ async function deleteDbEntry(entryId: number) {
     '删除记忆'
   )
   if (!confirmed) return
-  
+
   try {
     const response = await fetchWithAuth(`/api/memories/database/entries/${entryId}`, {
       method: 'DELETE'
@@ -927,7 +934,7 @@ async function loadMainDbTables() {
 
 async function loadTableData(offset: number = 0) {
   if (!selectedTable.value) return
-  
+
   loadingMainDb.value = true
   try {
     const response = await fetchWithAuth(`/api/database/tables/${selectedTable.value}?limit=100&offset=${offset}`)
@@ -954,13 +961,13 @@ async function loadTableData(offset: number = 0) {
 }
 
 async function deleteTableRow(rowId: string) {
-  console.log('[Delete] Attempting to delete:', { 
-    table: selectedTable.value, 
-    rowId, 
+  console.log('[Delete] Attempting to delete:', {
+    table: selectedTable.value,
+    rowId,
     primaryKey: tableData.value.primaryKey,
     encodedRowId: encodeURIComponent(rowId)
   })
-  
+
   const confirmed = await confirm.danger(
     `确定要删除这条记录吗？\n\nID: ${rowId}`,
     '删除记录'
@@ -969,18 +976,18 @@ async function deleteTableRow(rowId: string) {
     console.log('[Delete] User cancelled')
     return
   }
-  
+
   try {
     const encodedRowId = encodeURIComponent(rowId)
     const url = `/api/database/tables/${selectedTable.value}/${encodedRowId}`
     console.log('[Delete] Sending request to:', url)
-    
+
     const response = await fetchWithAuth(url, {
       method: 'DELETE'
     })
     const data = await response.json()
     console.log('[Delete] Response:', data)
-    
+
     if (data.status === 'ok') {
       toast.success('删除成功')
       await loadTableData(tableData.value.offset)
@@ -1019,10 +1026,10 @@ const totalTablePages = computed(() => {
 function jumpToPage(event: Event) {
   const input = event.target as HTMLInputElement
   let page = parseInt(input.value)
-  
+
   if (isNaN(page) || page < 1) page = 1
   if (page > totalTablePages.value) page = totalTablePages.value
-  
+
   const offset = (page - 1) * tableData.value.limit
   loadTableData(offset)
 }
@@ -1061,7 +1068,7 @@ async function loadGatewayDbTables() {
 
 async function loadGatewayTableData(offset: number = 0) {
   if (!selectedGatewayTable.value) return
-  
+
   loadingGatewayDb.value = true
   try {
     const response = await fetchWithAuth(`/api/gateway/tables/${selectedGatewayTable.value}?limit=100&offset=${offset}`)
@@ -1096,6 +1103,17 @@ const totalGatewayTablePages = computed(() => {
   if (gatewayTableData.value.limit === 0) return 1
   return Math.ceil(gatewayTableData.value.total / gatewayTableData.value.limit)
 })
+
+function jumpToGatewayTablePage(event: Event) {
+  const input = event.target as HTMLInputElement
+  let page = parseInt(input.value)
+
+  if (isNaN(page) || page < 1) page = 1
+  if (page > totalGatewayTablePages.value) page = totalGatewayTablePages.value
+
+  const offset = (page - 1) * gatewayTableData.value.limit
+  loadGatewayTableData(offset)
+}
 
 function closeGatewayDbModal() {
   showGatewayDbModal.value = false
@@ -1133,7 +1151,7 @@ async function loadDragonballDbTables() {
 
 async function loadDragonballTableData(offset: number = 0) {
   if (!selectedDragonballTable.value) return
-  
+
   loadingDragonballDb.value = true
   try {
     const response = await fetchWithAuth(`/api/dragonball/tables/${selectedDragonballTable.value}?limit=100&offset=${offset}&db=${currentDragonballDb.value}`)
@@ -1168,6 +1186,17 @@ const totalDragonballTablePages = computed(() => {
   if (dragonballTableData.value.limit === 0) return 1
   return Math.ceil(dragonballTableData.value.total / dragonballTableData.value.limit)
 })
+
+function jumpToDragonballTablePage(event: Event) {
+  const input = event.target as HTMLInputElement
+  let page = parseInt(input.value)
+
+  if (isNaN(page) || page < 1) page = 1
+  if (page > totalDragonballTablePages.value) page = totalDragonballTablePages.value
+
+  const offset = (page - 1) * dragonballTableData.value.limit
+  loadDragonballTableData(offset)
+}
 
 function closeDragonballDbModal() {
   showDragonballDbModal.value = false
@@ -1635,6 +1664,8 @@ onMounted(() => {
 .btn-sm {
   padding: 4px 8px;
   font-size: 0.8rem;
+  background: #45475a;
+  color: #cdd6f4;
 }
 
 .btn-danger {
@@ -1747,10 +1778,11 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+  width: 220px;
 }
 
 .page-input {
-  width: 60px;
+  width: 100px;
   padding: 4px 8px;
   background: #313244;
   border: 1px solid #45475a;

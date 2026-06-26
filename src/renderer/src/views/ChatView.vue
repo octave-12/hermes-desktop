@@ -387,7 +387,9 @@ onMounted(async () => {
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* 新增：水平方向绝不撑开 */
   padding: 20px 16px;
+  max-width: 100%; /* 新增：明确限制最大宽度 */
 }
 
 .load-more {
@@ -445,13 +447,15 @@ onMounted(async () => {
 
 /* ── Bubbles ── */
 .bubble {
-  max-width: 70%;
+  max-width: 80%;
   padding: 10px 14px;
   border-radius: 12px;
   line-height: 1.6;
   font-size: 0.9rem;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  word-break: break-all; /* 新增：强制断词，防止长字符串溢出 */
+  overflow-x: auto; /* 新增：万一溢出，可横向滚动而非撑开布局 */
   flex-shrink: 0;
 }
 
@@ -497,12 +501,22 @@ onMounted(async () => {
   padding-left: 12px;
 }
 
+/* 气泡内容（markdown 渲染后的 HTML） */
+.bubble-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all; /* 新增 */
+  overflow-x: auto; /* 新增 */
+}
+
 .bubble-content :deep(code) {
   background: rgba(0, 0, 0, 0.2);
   padding: 2px 5px;
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85em;
+  word-break: break-all; /* 新增：代码块也允许断词 */
+  white-space: pre-wrap; /* 保留原有格式但允许换行 */
 }
 
 /* ── System message ── */
